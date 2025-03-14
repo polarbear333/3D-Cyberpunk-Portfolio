@@ -1,7 +1,7 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { PerspectiveCamera, useGLTF } from '@react-three/drei';
-import { Vector3, Quaternion, Euler } from 'three';
+import { Vector3, Quaternion, Euler, MathUtils } from 'three';
 import { useStore } from '../../state/useStore';
 import { gsap } from 'gsap';
 
@@ -9,13 +9,29 @@ const DroneNavigation = () => {
   const { 
     dronePosition, droneRotation, droneVelocity, cameraMode,
     droneSpeed, droneAcceleration, droneTurnSpeed,
-    updateDronePosition, updateDroneRotation, updateDroneVelocity 
+    updateDronePosition, updateDroneRotation, updateDroneVelocity,
+    setCameraMode
   } = useStore();
+  
+  // Debug state
+  const [initialized, setInitialized] = useState(false);
 
   // References for the drone model and camera
   const droneRef = useRef();
   const cameraRef = useRef();
   const { camera, gl } = useThree();
+  
+  // Initialize drone position once
+  useEffect(() => {
+    if (!initialized) {
+      console.log("Initializing drone position");
+      updateDronePosition(new Vector3(0, 10, 0));
+      updateDroneRotation(new Euler(0, 0, 0));
+      updateDroneVelocity(new Vector3(0, 0, 0));
+      setCameraMode('thirdPerson');
+      setInitialized(true);
+    }
+  }, [initialized, updateDronePosition, updateDroneRotation, updateDroneVelocity, setCameraMode]);
   
   // Load the drone model (if needed)
   // const { scene: droneModel } = useGLTF('/models/drone.glb');

@@ -10,6 +10,7 @@ import {
 import { BlendFunction, Resizer, KernelSize } from 'postprocessing';
 import { useThree } from '@react-three/fiber';
 import { useStore } from '../../state/useStore';
+import * as THREE from 'three'
 
 const PostProcessing = () => {
   const { gl, scene, camera } = useThree();

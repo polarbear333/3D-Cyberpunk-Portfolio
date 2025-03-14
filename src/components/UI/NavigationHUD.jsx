@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useStore } from '../../state/useStore';
+import * as THREE from 'three';
 
 const NavigationHUD = () => {
   const { dronePosition, droneVelocity, activeHotspotId } = useStore();

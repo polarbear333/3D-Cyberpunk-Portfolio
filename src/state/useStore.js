@@ -1,14 +1,14 @@
 import create from 'zustand';
-import { Vector3 } from 'three';
+import { Vector3, Euler } from 'three';
 
 const useStore = create((set, get) => ({
   // Application state
   isLoading: true,
-  debugMode: false,
+  debugMode: true, // Set to true for development
   
   // Navigation and camera
   dronePosition: new Vector3(0, 10, 0),
-  droneRotation: new Vector3(0, 0, 0),
+  droneRotation: new Euler(0, 0, 0), // Changed to Euler for proper rotation
   droneVelocity: new Vector3(0, 0, 0),
   cameraMode: 'thirdPerson', // 'firstPerson' or 'thirdPerson'
   

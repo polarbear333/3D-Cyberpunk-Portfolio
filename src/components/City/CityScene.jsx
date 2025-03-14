@@ -213,6 +213,16 @@ const CityScene = () => {
       <fog attach="fog" args={['#0a0a0a', 0.002]} />
       <color attach="background" args={['#0a0a0a']} />
       
+      {/* Add some basic lighting */}
+      <ambientLight intensity={0.2} />
+      <directionalLight position={[10, 10, 5]} intensity={0.5} />
+      
+      {/* Debug sphere to ensure something renders */}
+      <mesh position={[0, 5, 0]}>
+        <sphereGeometry args={[2, 32, 32]} />
+        <meshStandardMaterial color="#00FFFF" emissive="#00FFFF" emissiveIntensity={0.5} />
+      </mesh>
+      
       {/* Night sky with stars */}
       <Sky
         distance={450000}

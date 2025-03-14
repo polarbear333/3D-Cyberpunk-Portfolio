@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WebGL Test</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: Arial, sans-serif;
+      background-color: #0a0a0a;
+      color: #00FFFF;
+    }
+    #container {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      box-sizing: border-box;
+    }
+    #output {
+      background-color: rgba(0, 0, 0, 0.7);
+      border: 1px solid #00FFFF;
+      border-radius: 5px;
+      padding: 20px;
+      margin-top: 20px;
+      max-width: 800px;
+      width: 100%;
+      max-height: 60vh;
+      overflow-y: auto;
+      font-family: monospace;
+      font-size: 14px;
+    }
+    h1 {
+      color: #FF00FF;
+    }
+    button {
+      background-color: #FF00FF;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 5px;
+      cursor: pointer;
+      margin-top: 20px;
+      font-size: 16px;
+    }
+    button:hover {
+      background-color: #CC00CC;
+    }
+    .success {
+      color: #00FF00;
+    }
+    .warning {
+      color: #FFFF00;
+    }
+    .error {
+      color: #FF0000;
+    }
+  </style>
+</head>
+<body>
+  <div id="container">
+    <h1>WebGL Compatibility Test</h1>
+    <div id="output"></div>
+    <button id="runTest">Run Diagnostics</button>
+  </div>
+
+  <script>
+    document.getElementById('runTest').addEventListener('click', runTests);
+
+    function log(message, type = 'info') {
+      const output = document.getElementById('output');
+      const line = document.createElement('div');
+      line.textContent = message;
+      line.className = type;
+      output.appendChild(line);
+    }
+
+    function runTests() {
+      const output = document.getElementById('output');
+      output.innerHTML = '';
+      
+      log('Running WebGL diagnostics...', 'info');
+      
+      // Check for WebGL support
+      let canvas = document.createElement('canvas');
+      let gl = null;
+      
+      try {
+        gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+      } catch (e) {
+        log('Error creating WebGL context: ' + e.message, 'error');
+      }
+      
+      if (!gl) {
+        log('WebGL is not supported by your browser', 'error');
+        log('The 3D cyberpunk portfolio requires WebGL support', 'error');
+        return;
+      }
+      
+      log('✓ WebGL is supported', 'success');
+      
+      // Check WebGL version
+      const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
+      if (debugInfo) {
+        const vendor = gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL);
+        const renderer = gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL);
+        
+        log(`GPU Vendor: ${vendor}`, 'info');
+        log(`GPU Renderer: ${renderer}`, 'info');
+      } else {
+        log('Could not get detailed GPU information', 'warning');
+      }
+      
+      // Check WebGL capabilities
+      const version = gl.getParameter(gl.VERSION);
+      const glslVersion = gl.getParameter(gl.SHADING_LANGUAGE_VERSION);
+      const maxTextureSize = gl.getParameter(gl.MAX_TEXTURE_SIZE);
+      const maxViewportDims = gl.getParameter(gl.MAX_VIEWPORT_DIMS);
+      
+      log(`WebGL Version: ${version}`, 'info');
+      log(`GLSL Version: ${glslVersion}`, 'info');
+      log(`Maximum Texture Size: ${maxTextureSize}x${maxTextureSize}`, 'info');
+      log(`Maximum Viewport Dimensions: ${maxViewportDims[0]}x${maxViewportDims[1]}`, 'info');
+      
+      // Check for required extensions
+      const requiredExtensions = [
+        'OES_texture_float',
+        'OES_texture_half_float',
+        'WEBGL_depth_texture',
+        'OES_standard_derivatives'
+      ];
+      
+      log('Checking for required extensions:', 'info');
+      
+      requiredExtensions.forEach(extension => {
+        const supported = gl.getExtension(extension) !== null;
+        if (supported) {
+          log(`✓ ${extension}`, 'success');
+        } else {
+          log(`✗ ${extension} - This may affect visual effects`, 'warning');
+        }
+      });
+      
+      // Check browser features
+      const features = [
+        { name: 'WebGL 2.0', test: () => !!window.WebGL2RenderingContext },
+        { name: 'RequestAnimationFrame', test: () => !!window.requestAnimationFrame },
+        { name: 'WebAudio API', test: () => !!window.AudioContext || !!window.webkitAudioContext }
+      ];
+      
+      log('Checking browser features:', 'info');
+      
+      features.forEach(feature => {
+        const supported = feature.test();
+        if (supported) {
+          log(`✓ ${feature.name}`, 'success');
+        } else {
+          log(`✗ ${feature.name} - This may affect functionality`, 'warning');
+        }
+      });
+      
+      // Final assessment
+      log('', 'info');
+      if (gl && maxTextureSize >= 4096) {
+        log('Your system should be able to run the 3D cyberpunk portfolio', 'success');
+      } else if (gl && maxTextureSize >= 2048) {
+        log('Your system can run the 3D cyberpunk portfolio, but may experience some performance issues', 'warning');
+      } else {
+        log('Your system may struggle to run the 3D cyberpunk portfolio at full quality', 'error');
+      }
+    }
+  </script>
+</body>
+</html>
