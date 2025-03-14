@@ -1,0 +1,57 @@
+[
+    {
+      "id": "project1",
+      "title": "Web Development",
+      "slug": "web-development",
+      "description": "A collection of responsive, interactive web applications built using modern frameworks and libraries. These projects demonstrate expertise in frontend and backend technologies, focusing on creating seamless user experiences and scalable architectures.",
+      "technologies": ["React", "Node.js", "Three.js", "Express", "MongoDB", "Tailwind CSS"],
+      "image": "/images/web-development.jpg",
+      "url": "https://example.com/project1",
+      "position": [25, 5, 25],
+      "color": "#00FFFF"
+    },
+    {
+      "id": "project2",
+      "title": "Mobile App Development",
+      "slug": "mobile-app",
+      "description": "Cross-platform mobile applications designed for iOS and Android devices. These projects showcase expertise in developing native-like experiences while maintaining a single codebase, integrating with device features, and optimizing performance for mobile environments.",
+      "technologies": ["React Native", "Flutter", "Firebase", "Redux", "GraphQL", "Native APIs"],
+      "image": "/images/mobile-app.jpg",
+      "url": "https://example.com/project2",
+      "position": [-25, 5, 25],
+      "color": "#FF00FF"
+    },
+    {
+      "id": "project3",
+      "title": "3D Modeling & Animation",
+      "slug": "3d-modeling",
+      "description": "Immersive 3D experiences created for web and interactive installations. This portfolio includes character modeling, environmental design, animation sequences, and interactive visualizations. The projects demonstrate proficiency in the complete 3D pipeline from concept to deployment.",
+      "technologies": ["Blender", "Three.js", "WebGL", "GLSL Shaders", "Animation", "Rigging"],
+      "image": "/images/3d-modeling.jpg",
+      "url": "https://example.com/project3",
+      "position": [25, 5, -25],
+      "color": "#FFFF00"
+    },
+    {
+      "id": "project4",
+      "title": "AI & Machine Learning",
+      "slug": "ai-projects",
+      "description": "Intelligent solutions leveraging artificial intelligence and machine learning algorithms. These projects include predictive analytics systems, computer vision applications, natural language processing tools, and data visualization interfaces that make AI accessible and actionable.",
+      "technologies": ["TensorFlow", "PyTorch", "OpenAI", "Computer Vision", "NLP", "Data Visualization"],
+      "image": "/images/ai-projects.jpg",
+      "url": "https://example.com/project4",
+      "position": [-25, 5, -25],
+      "color": "#FF1493"
+    },
+    {
+      "id": "project5",
+      "title": "Game Development",
+      "slug": "game-development",
+      "description": "Interactive games developed for web and mobile platforms. From casual puzzle games to immersive 3D experiences, these projects showcase expertise in game mechanics, physics simulations, asset optimization, and cross-platform deployment strategies.",
+      "technologies": ["Unity", "Unreal Engine", "WebGL", "Phaser", "Multiplayer", "Game AI"],
+      "image": "/images/game-development.jpg",
+      "url": "https://example.com/project5",
+      "position": [0, 5, 40],
+      "color": "#39FF14"
+    }
+  ]

@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>3D Cyberpunk Portfolio</title>
+    <meta name="description" content="Explore a 3D cyberpunk city using drone navigation to discover projects and works">
+    <!-- Preload fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;800;900&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+  </head>
+  <body>
+    <div id="root"></div>
+    <!-- Scanline effect overlay -->
+    <div class="scanline"></div>
+    <script type="module" src="/src/index.jsx"></script>
+    <!-- Initial loading message for large screens -->
+    <noscript>
+      <div style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; background-color: #0a0a0a; color: #00FFFF; text-align: center; font-family: 'Orbitron', sans-serif;">
+        <h1>JavaScript is required</h1>
+        <p>Please enable JavaScript to experience this 3D cyberpunk portfolio</p>
+      </div>
+    </noscript>
+  </body>
+</html>
