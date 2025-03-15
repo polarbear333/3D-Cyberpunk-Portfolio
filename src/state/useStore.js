@@ -1,5 +1,5 @@
 import create from 'zustand';
-import { Vector3, Euler } from 'three';
+import { Vector3, Euler, Box3 } from 'three';
 
 const useStore = create((set, get) => ({
   // Application state
@@ -17,10 +17,17 @@ const useStore = create((set, get) => ({
   droneAcceleration: 0.05,
   droneTurnSpeed: 0.02,
   
+  // City and collision boundaries
+  cityBounds: null,  // Will be set when the city model loads
+  collisionObjects: [], // Object meshes to check for collision
+  
   // UI state
   activeHotspotId: null,
   isOverlayVisible: false,
   overlayContent: null,
+  
+  // Audio state
+  soundEnabled: true,
   
   // Projects data
   projects: [],
@@ -34,9 +41,28 @@ const useStore = create((set, get) => ({
   updateDroneVelocity: (velocity) => set({ droneVelocity: velocity }),
   setCameraMode: (mode) => set({ cameraMode: mode }),
   
+  setCityBounds: (bounds) => set({ cityBounds: bounds }),
+  addCollisionObject: (object) => set((state) => ({ 
+    collisionObjects: [...state.collisionObjects, object] 
+  })),
+  
   setActiveHotspot: (id) => set({ activeHotspotId: id }),
   showOverlay: (content) => set({ isOverlayVisible: true, overlayContent: content }),
   hideOverlay: () => set({ isOverlayVisible: false }),
+  
+  toggleSound: () => set((state) => ({ soundEnabled: !state.soundEnabled })),
+  
+  // Check if a position is inside city bounds
+  isInCityBounds: (position) => {
+    const { cityBounds } = get();
+    if (!cityBounds) return true; // If bounds not set yet, allow movement
+    
+    return (
+      position.x >= cityBounds.min.x && position.x <= cityBounds.max.x &&
+      position.y >= cityBounds.min.y && position.y <= cityBounds.max.y &&
+      position.z >= cityBounds.min.z && position.z <= cityBounds.max.z
+    );
+  },
   
   loadProjects: async () => {
     try {

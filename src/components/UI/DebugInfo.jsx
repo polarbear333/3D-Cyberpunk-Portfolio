@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { useThree, useFrame } from '@react-three/fiber';
+import { useFrame, useThree } from '@react-three/fiber';
 import { useStore } from '../../state/useStore';
 
+// This component will be rendered outside the Canvas
 const DebugInfo = () => {
   const { debugMode, dronePosition, droneVelocity, cameraMode } = useStore();
   const [info, setInfo] = useState({
@@ -9,42 +10,89 @@ const DebugInfo = () => {
     dronePos: [0, 0, 0],
     droneVel: [0, 0, 0],
     cameraMode: '',
+    cameraPos: [0, 0, 0]
   });
-  const { camera } = useThree();
   
   // FPS calculation
   const [frames, setFrames] = useState(0);
   const [lastTime, setLastTime] = useState(performance.now());
   
-  useFrame(() => {
-    // Increment frame count
-    setFrames(prev => prev + 1);
+  // Update info from store values
+  useEffect(() => {
+    // Update state info with values from the store
+    setInfo(prev => ({
+      ...prev,
+      dronePos: [
+        Math.round(dronePosition.x * 10) / 10,
+        Math.round(dronePosition.y * 10) / 10,
+        Math.round(dronePosition.z * 10) / 10
+      ],
+      droneVel: [
+        Math.round(droneVelocity.x * 100) / 100,
+        Math.round(droneVelocity.y * 100) / 100,
+        Math.round(droneVelocity.z * 100) / 100
+      ],
+      cameraMode
+    }));
+  }, [dronePosition, droneVelocity, cameraMode]);
+
+  // Calculate FPS
+  useEffect(() => {
+    // Only do this if debug mode is on
+    if (!debugMode) return;
     
-    // Calculate FPS every second
-    const now = performance.now();
-    if (now - lastTime > 1000) {
-      const fps = Math.round((frames * 1000) / (now - lastTime));
+    const frameCounter = () => {
+      // Increment frame count
+      setFrames(prev => prev + 1);
       
-      // Update state info
-      setInfo({
-        fps,
-        dronePos: [
-          Math.round(dronePosition.x * 10) / 10,
-          Math.round(dronePosition.y * 10) / 10,
-          Math.round(dronePosition.z * 10) / 10
-        ],
-        droneVel: [
-          Math.round(droneVelocity.x * 100) / 100,
-          Math.round(droneVelocity.y * 100) / 100,
-          Math.round(droneVelocity.z * 100) / 100
-        ],
-        cameraMode,
-      });
+      // Calculate FPS every second
+      const now = performance.now();
+      if (now - lastTime > 1000) {
+        const fps = Math.round((frames * 1000) / (now - lastTime));
+        
+        setInfo(prev => ({
+          ...prev,
+          fps
+        }));
+        
+        setFrames(0);
+        setLastTime(now);
+      }
       
-      setFrames(0);
-      setLastTime(now);
-    }
-  });
+      // Schedule next frame
+      requestAnimationFrame(frameCounter);
+    };
+
+    // Start counting frames
+    const frameId = requestAnimationFrame(frameCounter);
+    
+    // Clean up
+    return () => {
+      cancelAnimationFrame(frameId);
+    };
+  }, [debugMode, frames, lastTime]);
+  
+  // Listen for camera position updates from the Canvas via a custom event
+  useEffect(() => {
+    const handleCameraUpdate = (event) => {
+      const { cameraPosition } = event.detail;
+      
+      setInfo(prev => ({
+        ...prev,
+        cameraPos: [
+          Math.round(cameraPosition.x),
+          Math.round(cameraPosition.y),
+          Math.round(cameraPosition.z)
+        ]
+      }));
+    };
+    
+    window.addEventListener('cameraPositionUpdate', handleCameraUpdate);
+    
+    return () => {
+      window.removeEventListener('cameraPositionUpdate', handleCameraUpdate);
+    };
+  }, []);
   
   if (!debugMode) return null;
   
@@ -61,7 +109,7 @@ const DebugInfo = () => {
         <div>({info.droneVel[0]}, {info.droneVel[1]}, {info.droneVel[2]})</div>
         
         <div>Camera:</div>
-        <div>({Math.round(camera.position.x)}, {Math.round(camera.position.y)}, {Math.round(camera.position.z)})</div>
+        <div>({info.cameraPos[0]}, {info.cameraPos[1]}, {info.cameraPos[2]})</div>
         
         <div>Mode:</div>
         <div>{info.cameraMode}</div>
@@ -70,6 +118,22 @@ const DebugInfo = () => {
       <div className="mt-2 text-xs text-gray-400">Press H for controls</div>
     </div>
   );
+};
+
+// Create a separate component that will be used inside the Canvas
+// This component will just emit camera position updates
+export const CameraTracker = () => {
+  const { camera } = useThree();
+  
+  useFrame(() => {
+    // Dispatch custom event with camera position
+    window.dispatchEvent(new CustomEvent('cameraPositionUpdate', {
+      detail: { cameraPosition: camera.position }
+    }));
+  });
+  
+  // This component doesn't render anything
+  return null;
 };
 
 export default DebugInfo;

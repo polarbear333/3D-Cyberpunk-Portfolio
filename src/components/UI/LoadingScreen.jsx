@@ -34,6 +34,11 @@ const LoadingScreen = () => {
       const maxIterations = 10;
       
       const interval = setInterval(() => {
+        if (!textRef.current) {
+          clearInterval(interval);
+          return;
+        }
+        
         textRef.current.innerText = originalText
           .split("")
           .map((char, index) => {

@@ -1,8 +1,171 @@
-import React, { useRef, useMemo } from 'react';
-import { useFrame } from '@react-three/fiber';
-import { useTexture, useHelper, Sky } from '@react-three/drei';
-import { PointLightHelper, DirectionalLightHelper, Color, FogExp2, MathUtils } from 'three';
+import React, { useRef, useMemo, useEffect, useState } from 'react';
+import { useFrame, useThree } from '@react-three/fiber';
+import { useTexture, useHelper, Sky, useGLTF } from '@react-three/drei';
+import { PointLightHelper, DirectionalLightHelper, Color, FogExp2, MathUtils, Box3, Vector3 } from 'three';
 import { useStore } from '../../state/useStore';
+import { BuildingGenerator } from '../../utils';
+import ResourceManager from '../../utils/resourceManager';
+
+// Preload the city model
+useGLTF.preload('/models/cybercity/scene.gltf');
+
+// Atmospheric particles effect
+const Points = ({ count = 100, size = 0.5, radius = 50 }) => {
+  const pointsRef = useRef();
+  
+  // Generate random points within a cylindrical volume
+  const positions = useMemo(() => {
+    const positions = new Float32Array(count * 3);
+    
+    for (let i = 0; i < count; i++) {
+      const theta = Math.random() * Math.PI * 2;
+      const r = Math.sqrt(Math.random()) * radius;
+      const x = r * Math.cos(theta);
+      const z = r * Math.sin(theta);
+      const y = Math.random() * 50; // Height distribution
+      
+      positions[i * 3] = x;
+      positions[i * 3 + 1] = y;
+      positions[i * 3 + 2] = z;
+    }
+    
+    return positions;
+  }, [count, radius]);
+  
+  // Animate particles
+  useFrame(({ clock }) => {
+    if (!pointsRef.current) return;
+    
+    const time = clock.getElapsedTime();
+    const positions = pointsRef.current.geometry.attributes.position.array;
+    
+    for (let i = 0; i < count; i++) {
+      const i3 = i * 3;
+      
+      // Gentle upward movement with variation
+      positions[i3 + 1] += 0.01 + 0.01 * Math.sin(time + i);
+      
+      // Reset position when it reaches the top
+      if (positions[i3 + 1] > 50) {
+        positions[i3 + 1] = 0;
+      }
+      
+      // Small random horizontal movement
+      positions[i3] += Math.sin(time * 0.5 + i) * 0.01;
+      positions[i3 + 2] += Math.cos(time * 0.5 + i * 1.1) * 0.01;
+    }
+    
+    pointsRef.current.geometry.attributes.position.needsUpdate = true;
+  });
+  
+  return (
+    <points ref={pointsRef}>
+      <bufferGeometry>
+        <bufferAttribute
+          attach="attributes-position"
+          count={count}
+          array={positions}
+          itemSize={3}
+        />
+      </bufferGeometry>
+      <pointsMaterial 
+        size={size} 
+        color="#5599FF" 
+        transparent 
+        opacity={0.6} 
+        sizeAttenuation={true} 
+      />
+    </points>
+  );
+};
+
+// Individual flying vehicle
+const FlyingVehicle = ({ radius, height, speed, startAngle, clockwise, color }) => {
+  const vehicleRef = useRef();
+  const lightRef = useRef();
+  
+  // Animate the vehicle along a circular path
+  useFrame(({ clock }) => {
+    if (!vehicleRef.current) return;
+    
+    const time = clock.getElapsedTime();
+    const angle = startAngle + (clockwise ? 1 : -1) * time * speed;
+    
+    // Calculate position on circular path
+    const x = radius * Math.cos(angle);
+    const z = radius * Math.sin(angle);
+    
+    // Update position
+    vehicleRef.current.position.set(x, height, z);
+    
+    // Update rotation to face direction of movement
+    const tangentAngle = angle + (clockwise ? -Math.PI / 2 : Math.PI / 2);
+    vehicleRef.current.rotation.y = tangentAngle;
+    
+    // Animate lights
+    if (lightRef.current) {
+      lightRef.current.intensity = 1 + 0.5 * Math.sin(time * 5 + startAngle * 10);
+    }
+  });
+  
+  return (
+    <group ref={vehicleRef}>
+      {/* Simple vehicle body */}
+      <mesh>
+        <boxGeometry args={[0.8, 0.2, 1.5]} />
+        <meshStandardMaterial color="#222222" metalness={0.8} roughness={0.2} />
+      </mesh>
+      
+      {/* Neon lights */}
+      <mesh position={[0, 0, 0.7]}>
+        <boxGeometry args={[0.6, 0.1, 0.1]} />
+        <meshStandardMaterial color={color} emissive={color} emissiveIntensity={1.5} />
+      </mesh>
+      
+      <mesh position={[0, 0, -0.7]}>
+        <boxGeometry args={[0.6, 0.1, 0.1]} />
+        <meshStandardMaterial color={color} emissive={color} emissiveIntensity={1.5} />
+      </mesh>
+      
+      {/* Light source */}
+      <pointLight
+        ref={lightRef}
+        color={color}
+        intensity={1.5}
+        distance={10}
+        position={[0, 0, 0]}
+      />
+    </group>
+  );
+};
+
+// Flying vehicles/drones effect
+const FlyingVehicles = ({ count = 5 }) => {
+  const vehicles = useMemo(() => {
+    return Array.from({ length: count }).map((_, i) => {
+      // Generate random paths
+      const radius = 30 + Math.random() * 40;
+      const height = 15 + Math.random() * 30;
+      const speed = 0.1 + Math.random() * 0.3;
+      const startAngle = Math.random() * Math.PI * 2;
+      const clockwise = Math.random() > 0.5;
+      
+      // Choose a random neon color
+      const colors = ["#00FFFF", "#FF00FF", "#FFFF00", "#FF1493", "#39FF14"];
+      const color = colors[Math.floor(Math.random() * colors.length)];
+      
+      return { radius, height, speed, startAngle, clockwise, color };
+    });
+  }, [count]);
+  
+  return (
+    <>
+      {vehicles.map((vehicle, i) => (
+        <FlyingVehicle key={`vehicle-${i}`} {...vehicle} />
+      ))}
+    </>
+  );
+};
 
 // Helper function to generate a procedural building
 const Building = ({ position, width, depth, height, emissiveColor, hasAntenna = false }) => {
@@ -72,36 +235,6 @@ const Building = ({ position, width, depth, height, emissiveColor, hasAntenna = 
   );
 };
 
-// Neon sign component
-const NeonSign = ({ position, rotation, text, color, width = 5 }) => {
-  const textRef = useRef();
-  
-  useFrame(({ clock }) => {
-    if (textRef.current) {
-      // Flicker effect
-      textRef.current.material.emissiveIntensity = 
-        (Math.sin(clock.getElapsedTime() * 10) * 0.2 + 0.8) * 
-        (Math.random() > 0.97 ? 0.5 : 1);
-    }
-  });
-  
-  return (
-    <group position={position} rotation={rotation}>
-      <mesh ref={textRef}>
-        <textGeometry args={[text, { size: 1, height: 0.1, width: 0.1 }]} />
-        <meshStandardMaterial 
-          color={color} 
-          emissive={color} 
-          emissiveIntensity={1} 
-          metalness={0.2}
-          roughness={0.3}
-        />
-      </mesh>
-      <pointLight color={color} intensity={1} distance={5} />
-    </group>
-  );
-};
-
 // Road with neon strips
 const Road = ({ start, end, width = 8, color = "#00FFFF" }) => {
   const direction = [end[0] - start[0], end[2] - start[2]];
@@ -138,72 +271,144 @@ const Road = ({ start, end, width = 8, color = "#00FFFF" }) => {
           opacity={0.9}
         />
       </mesh>
+      
+      {/* Road markings - broken lines in middle */}
+      {Array.from({ length: Math.floor(length / 5) }).map((_, i) => (
+        <mesh 
+          key={`road-mark-${i}`} 
+          position={[i * 5 - length / 2 + 2.5, 0.03, 0]}
+          rotation={[-Math.PI / 2, 0, 0]}
+        >
+          <planeGeometry args={[2, 0.2]} />
+          <meshBasicMaterial color="#FFFFFF" />
+        </mesh>
+      ))}
     </group>
   );
 };
 
 const CityScene = () => {
-  const { debugMode } = useStore();
+  const { debugMode, setCityBounds } = useStore();
+  const [cityLoaded, setCityLoaded] = useState(false);
+  const [resourceManager, setResourceManager] = useState(null);
+  const [loadingProgress, setLoadingProgress] = useState(0);
+  
+  // Get the three.js renderer for resource manager
+  const { gl: renderer } = useThree();
   
   // Light refs for debug helpers
   const mainLightRef = useRef();
   const spotlightRef = useRef();
+  const cityRef = useRef();
   
   // Use debug helpers when in debug mode
   useHelper(debugMode && mainLightRef, DirectionalLightHelper, 5, '#ffffff');
   useHelper(debugMode && spotlightRef, PointLightHelper, 2, '#ff00ff');
   
-  // Generate procedural buildings
-  const buildings = useMemo(() => {
-    const buildingData = [];
-    const citySize = 100;
-    const buildingCount = 50;
-    
-    // Generate random buildings
-    for (let i = 0; i < buildingCount; i++) {
-      const x = MathUtils.randFloatSpread(citySize);
-      const z = MathUtils.randFloatSpread(citySize);
+  // Initialize resource manager
+  useEffect(() => {
+    if (renderer && !resourceManager) {
+      const manager = new ResourceManager(renderer);
       
-      // Keep buildings away from the center (drone starting area)
-      if (Math.sqrt(x * x + z * z) < 15) continue;
+      // Set up callbacks
+      manager.setProgressCallback((progress) => {
+        setLoadingProgress(progress);
+      });
       
-      const width = MathUtils.randFloat(5, 15);
-      const depth = MathUtils.randFloat(5, 15);
-      const height = MathUtils.randFloat(10, 40);
+      manager.setLoadCallback(() => {
+        console.log('All city resources loaded');
+      });
       
-      // Randomly choose an emissive color for the building
-      const colorOptions = [
-        "#FF00FF", // Magenta
-        "#00FFFF", // Cyan
-        "#FF1493", // Deep Pink
-        "#7B68EE", // Medium Slate Blue
-        "#1E90FF", // Dodger Blue
-        null, // Some buildings don't glow
-      ];
+      manager.setErrorCallback((error) => {
+        console.error('Error loading city resources:', error);
+      });
       
-      const emissiveColor = colorOptions[Math.floor(Math.random() * colorOptions.length)];
-      const hasAntenna = Math.random() > 0.7;
-      
-      buildingData.push({
-        position: [x, 0, z],
-        width,
-        depth,
-        height,
-        emissiveColor,
-        hasAntenna,
+      setResourceManager(manager);
+    }
+  }, [renderer, resourceManager]);
+  
+  // Load city model using resource manager
+  useEffect(() => {
+    if (resourceManager && !cityLoaded && cityRef.current) {
+      resourceManager.loadModel('/models/cybercity/scene.gltf', {
+        optimizeMaterials: true,
+        emissiveObjects: ['neon', 'light', 'glow', 'sign', 'screen', 'window'],
+        debugName: 'cybercity'
+      }).then(cityModel => {
+        // Scale and position adjustment if needed
+        cityModel.scale.set(1, 1, 1); // Adjust scale as needed
+        cityModel.position.set(0, 0, 0); // Adjust position as needed
+        
+        // Add the model to the scene
+        cityRef.current.add(cityModel);
+        
+        // Calculate city bounds for navigation constraints
+        const boundingBox = new Box3().setFromObject(cityModel);
+        const size = new Vector3();
+        boundingBox.getSize(size);
+        
+        // Set bounding box in global state for collision detection
+        setCityBounds({
+          min: boundingBox.min,
+          max: boundingBox.max,
+          size: size
+        });
+        
+        setCityLoaded(true);
+      })
+      .catch(error => {
+        console.error('Failed to load city model:', error);
       });
     }
-    
-    return buildingData;
-  }, []);
+  }, [resourceManager, cityLoaded, setCityBounds]);
   
-  // Generate roads
+  // Loading animation for emissive elements
+  useFrame(({ clock }) => {
+    if (cityRef.current && cityLoaded) {
+      // Animate neon elements
+      cityRef.current.traverse((child) => {
+        if (child.isMesh && child.material && child.material.emissive) {
+          // Create subtle pulsing for emissive materials
+          const timeFactor = clock.getElapsedTime();
+          // Use object position for variation in the pulsing
+          const offset = (child.position.x + child.position.z) * 0.1;
+          const pulse = Math.sin(timeFactor + offset) * 0.3 + 0.7;
+          
+          // Apply pulse to emissive intensity
+          child.material.emissiveIntensity = pulse;
+          
+          // Occasionally add a flicker effect to some elements
+          if (child.name.includes('flicker') && Math.random() > 0.95) {
+            child.material.emissiveIntensity *= Math.random() * 0.5 + 0.5;
+          }
+        }
+      });
+    }
+  });
+
+  // Generate procedural buildings to supplement the city model
+  const buildings = useMemo(() => {
+    // Create a cyberpunk building generator
+    const buildingGenerator = new BuildingGenerator({
+      citySize: 150,
+      centerClearRadius: 30, // Keep buildings away from city center
+      minHeight: 15,
+      maxHeight: 60,
+    });
+    
+    // Generate a number of random buildings
+    return buildingGenerator.generateBuildings(30);
+  }, []);
+
+  // Create neon roads to connect areas of the city
   const roads = useMemo(() => {
     return [
-      { start: [-50, 0, 0], end: [50, 0, 0], color: "#00FFFF" },
-      { start: [0, 0, -50], end: [0, 0, 50], color: "#FF00FF" },
-      { start: [-30, 0, -30], end: [30, 0, 30], color: "#FFFF00" },
-      { start: [-30, 0, 30], end: [30, 0, -30], color: "#FF1493" },
+      { start: [-70, 0, 0], end: [70, 0, 0], width: 10, color: "#00FFFF" },
+      { start: [0, 0, -70], end: [0, 0, 70], width: 10, color: "#FF00FF" },
+      { start: [-50, 0, -50], end: [50, 0, 50], width: 8, color: "#FFFF00" },
+      { start: [-50, 0, 50], end: [50, 0, -50], width: 8, color: "#FF1493" },
+      { start: [40, 0, -20], end: [80, 0, 30], width: 6, color: "#39FF14" },
+      { start: [-40, 0, 20], end: [-80, 0, -30], width: 6, color: "#39FF14" },
     ];
   }, []);
   
@@ -213,25 +418,8 @@ const CityScene = () => {
       <fog attach="fog" args={['#0a0a0a', 0.002]} />
       <color attach="background" args={['#0a0a0a']} />
       
-      {/* Add some basic lighting */}
+      {/* Basic lighting */}
       <ambientLight intensity={0.2} />
-      <directionalLight position={[10, 10, 5]} intensity={0.5} />
-      
-      {/* Debug sphere to ensure something renders */}
-      <mesh position={[0, 5, 0]}>
-        <sphereGeometry args={[2, 32, 32]} />
-        <meshStandardMaterial color="#00FFFF" emissive="#00FFFF" emissiveIntensity={0.5} />
-      </mesh>
-      
-      {/* Night sky with stars */}
-      <Sky
-        distance={450000}
-        sunPosition={[0, -1, 0]} 
-        inclination={0}
-        azimuth={180}
-      />
-      
-      {/* Main directional light (moonlight) */}
       <directionalLight
         ref={mainLightRef}
         position={[50, 100, 0]}
@@ -241,42 +429,71 @@ const CityScene = () => {
         shadow-mapSize-width={2048}
         shadow-mapSize-height={2048}
         shadow-camera-far={150}
-        shadow-camera-left={-50}
-        shadow-camera-right={50}
-        shadow-camera-top={50}
-        shadow-camera-bottom={-50}
+        shadow-camera-left={-75}
+        shadow-camera-right={75}
+        shadow-camera-top={75}
+        shadow-camera-bottom={-75}
       />
       
-      {/* Ambient light for base illumination */}
-      <ambientLight intensity={0.1} />
+      {/* Night sky with stars */}
+      <Sky
+        distance={450000}
+        sunPosition={[0, -1, 0]} 
+        inclination={0}
+        azimuth={180}
+        turbidity={10}
+        rayleigh={0.5}
+      />
+      
+      {/* GLTF City Model Container */}
+      <group ref={cityRef} />
       
       {/* Ground plane */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]} receiveShadow>
-        <planeGeometry args={[200, 200]} />
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.1, 0]} receiveShadow>
+        <planeGeometry args={[300, 300]} />
         <meshStandardMaterial color="#111111" roughness={0.8} metalness={0.2} />
       </mesh>
       
-      {/* Buildings */}
+      {/* Procedural buildings to supplement the city */}
       {buildings.map((building, index) => (
         <Building key={`building-${index}`} {...building} />
       ))}
       
-      {/* Roads */}
+      {/* Neon roads connecting city areas */}
       {roads.map((road, index) => (
         <Road key={`road-${index}`} {...road} />
       ))}
       
-      {/* Central spotlight/beacon */}
+      {/* Central spotlight/beacon as navigation reference point */}
       <pointLight
         ref={spotlightRef}
-        position={[0, 20, 0]}
+        position={[0, 30, 0]}
         intensity={5}
-        distance={50}
+        distance={80}
         color="#FF00FF"
         castShadow
       />
       
-      {/* Fog particles/volumetric lights will be implemented in PostProcessing component */}
+      {/* Add volumetric light beam from central beacon */}
+      <mesh position={[0, 15, 0]} rotation={[0, 0, 0]}>
+        <cylinderGeometry args={[0.5, 10, 30, 16, 1, true]} />
+        <meshBasicMaterial color="#FF00FF" transparent opacity={0.15} side={2} />
+      </mesh>
+      
+      {/* Add atmospheric floating particles */}
+      <Points count={500} size={0.5} radius={100} />
+      
+      {/* Add flying drones/vehicles in the background */}
+      <FlyingVehicles count={12} />
+      
+      {/* Loading progress indicator */}
+      {!cityLoaded && debugMode && (
+        <mesh position={[0, 20, 0]}>
+          <sphereGeometry args={[1, 16, 16]} />
+          <meshBasicMaterial color="#FFFF00" />
+          <pointLight color="#FFFF00" intensity={2} distance={10} />
+        </mesh>
+      )}
     </group>
   );
 };

@@ -1,0 +1,132 @@
+# Development Plan for 3D Cyberpunk Portfolio
+
+## Development targets to solve
+
+1.  **Enhance Cityscape and Assets:**
+    *   Add more diverse building models and architectural styles.
+    *   Create and integrate more detailed textures for buildings and streets.
+    *   Implement procedural generation for city layout to create a more dynamic and varied environment.
+    *   Add environmental elements like flying vehicles, animated billboards, or holographic projections to enhance the cyberpunk atmosphere.
+
+2.  **Develop Interactive Hotspots and Project Content:**
+    *   Design and implement interactive hotspots on buildings to represent projects.
+    *   Create 2D UI overlays to display project details (images, descriptions, links) when hotspots are activated.
+    *   Populate `public/data/projects.json` with actual portfolio project data.
+    *   Implement dynamic loading of project content based on hotspot interaction.
+
+3.  **Improve Drone Navigation and User Experience:**
+    *   Implement collision detection to prevent drone from flying through buildings.
+    *   Add UI hints or tutorials to guide users on drone navigation.
+    *   Explore adding different camera modes (first-person, third-person).
+    *   Implement dynamic URL updates for deep linking to specific projects or city locations.
+
+4.  **Add Ambient Audio and Sound Effects:**
+    *   Integrate ambient cyberpunk background music.
+    *   Add spatial sound effects for city elements and drone movement.
+    *   Implement audio cues for hotspot interactions.
+
+5.  **Performance Optimization:**
+Performance Optimization
+• Asset Compression & Asynchronous Loading:
+
+Compressed 3D Models: Use GLTFLoader together with DRACOLoader to load Draco-compressed models. In practice, set the decoder path with DRACOLoader (e.g., dracoLoader.setDecoderPath("draco/")) and attach it to GLTFLoader using gltfLoader.setDRACOLoader(dracoLoader). This minimizes file sizes and speeds up downloads while decompressing models at runtime.
+Compressed Textures: Convert textures to KTX2 format and load them using KTX2Loader. Configure the loader by setting its transcoder path (e.g., ktx2Loader.setTranscoderPath("basis/")) and detect renderer support. This ensures high-quality textures at lower memory and bandwidth costs.
+Lazy & Parallel Asset Loading: Implement a custom resource manager that tracks the total number of assets, initiates loading in parallel, and uses event-based callbacks to update a loading overlay. This provides a smooth transition from a loading screen to the interactive scene without blocking the main thread.
+• Baked Lighting & Precomputed Shadows:
+
+Pre-baked Textures: Prepare lighting and shadow data in an offline tool (e.g., Blender) and bake it into textures. In your Three.js scene, apply these textures using MeshBasicMaterial or custom shaders. This removes the need for real-time lighting calculations for static objects, thereby reducing GPU workload.
+Static Material Assignment: Assign pre-baked materials to static models so that real-time dynamic lighting isn’t computed for every frame. This involves traversing the model’s scene graph and replacing dynamic materials with the baked material.
+• Instanced Rendering for Repeated Elements:
+
+Using InstancedMesh: For objects that appear many times (e.g., building windows or particle effects), use Three.js’s InstancedMesh. Create a single geometry and material, then instantiate many copies by setting up a transformation matrix for each instance. This approach dramatically reduces draw calls because all instances are rendered in one call.
+Matrix Updates: Calculate and update transformation matrices (position, rotation, scale) for each instance, then update the instance matrix attribute (e.g., instanceMesh.instanceMatrix.needsUpdate = true) on each frame or when changes occur.
+• Level of Detail (LOD) Management:
+
+Multiple Model Versions: Create several versions of your 3D models (high, medium, low poly) and switch between them based on the camera’s distance. You can implement this by using Three.js’s LOD class or by writing custom logic that checks the distance from the camera and replaces the model accordingly.
+Efficient Culling: Organize your scene so that objects outside the camera’s frustum are automatically culled. This minimizes unnecessary computations and draw calls.
+• Optimized Build & Asset Management:
+
+Webpack Production Optimizations: Configure Webpack to produce a minified, hashed bundle for production. This includes code splitting, asset hashing, and minification, all of which reduce the final bundle size and improve runtime loading performance.
+Resource Manager: Develop a resource manager that not only loads assets asynchronously but also applies texture settings (e.g., anisotropy, color space conversion) based on the renderer’s capabilities.
+
+
+## WebGL/Three.js Optimization Techniques:
+
+WebGL/Three.js Optimization Techniques
+• Geometry and Model Efficiency:
+
+Reduce Polygon Count: Optimize your 3D models in modeling software (e.g., Blender) to remove unnecessary vertices and faces. Use decimation tools to lower polygon counts while maintaining visual quality.
+Model Compression: Use Draco compression by integrating DRACOLoader with GLTFLoader. This requires setting the decoder path and then assigning the DRACOLoader to GLTFLoader so that models are downloaded in a compressed format and decompressed in the browser.
+• Texture Optimization:
+
+Basis/KTX2 Texture Compression: Convert your textures to a compressed format (KTX2) and load them using KTX2Loader. Configure the transcoder path and detect the renderer’s support. This technique reduces texture file sizes and improves loading times.
+Optimized Texture Settings: Ensure textures use power-of-two dimensions (e.g., 512×512, 1024×1024) for efficient GPU sampling. Set the maximum anisotropy (retrieved via renderer.capabilities.getMaxAnisotropy()) and adjust the color space (e.g., using sRGB) to maintain both quality and performance.
+• Rendering Techniques to Reduce Draw Calls:
+
+Instanced Rendering: Use InstancedMesh to render many similar objects with one draw call. Calculate individual transformation matrices for each instance and update the instanceMatrix attribute, which reduces overhead by consolidating draw calls.
+Geometry Merging: Merge static geometries that share the same material into a single mesh. This minimizes state changes and reduces the total number of draw calls required for rendering complex scenes.
+• Material and Shader Optimization:
+
+Simplify Shaders: Write custom shaders that are optimized for performance. Avoid excessive use of loops and complex mathematical functions in shader code. Use pre-defined shader chunks when possible to minimize custom logic.
+Efficient Material Choices: For non-dynamic objects, use simpler materials (like MeshBasicMaterial) that do not calculate dynamic lighting. For objects that need lighting, use efficient alternatives such as MeshStandardMaterial, balancing realism with performance.
+• Scene and Renderer Configuration:
+
+Frustum Culling & LOD: Leverage Three.js’s built-in frustum culling to ensure that objects outside the camera view are not rendered. Implement LOD techniques to swap high-detail models with low-detail versions when objects are distant.
+Renderer Parameter Tuning: When initializing the WebGLRenderer, disable non-critical features like antialiasing (if acceptable) by setting antialias: false. Set powerPreference to "high-performance" to hint the browser to use the optimal GPU.
+Post-Processing Effects: Use effects like bloom, SSAO, and depth of field sparingly. Optimize their parameters (reduce sample counts or effect strengths) to avoid excessive performance overhead.
+• Performance Monitoring & Debugging:
+
+Integrate Stats.js: Use stats.js to monitor FPS, draw calls, and memory usage in real time. This helps you identify bottlenecks and adjust your optimizations accordingly.
+Profiling Tools: Use browser developer tools (such as Chrome’s performance profiler) to analyze JavaScript execution, rendering times, and GPU performance.
+Minimize Re-renders: If using frameworks such as React Three Fiber, ensure components are optimized (e.g., with React.memo) to prevent unnecessary re-renders that could impact performance.
+
+Step-by-Step Proposal
+1. Integrate and Optimize the Existing City Map:
+
+• Verify that your current cyberpunk city map is fully integrated into your Three.js scene.
+• Run performance tests (using tools like stats.js) to understand baseline metrics.
+
+2. Acquire the Drone Model:
+
+• Source a futuristic drone model that fits your design style. Consider marketplaces (like Sketchfab or TurboSquid) or create one in Blender.
+• Ensure the model is rigged and optimized (preferably with Draco compression support for efficient loading).
+
+3. Implement a Robust Asset Loader:
+
+• Develop or extend your existing resource manager to handle asynchronous loading of GLTF/DRACO models and compressed textures (using KTX2).
+
+• Test the loading sequence with progress indicators and lazy-loading strategies to maintain smooth user experience.
+
+4. Integrate Interactive Hotspot Models:
+
+• Identify and acquire models for interactive elements (arcade machines, neon signs, holographic displays).
+
+• Use instanced rendering (InstancedMesh) for elements that appear in multiple locations to reduce draw calls.
+
+5. Apply Material and Shader Enhancements:
+
+• Create or adapt custom shaders (for example, neon glow effects) that work with emissive materials on your hotspot and detail models.
+
+• Pre-bake lighting for static models where possible to cut down on real-time computations.
+
+6. Enhance UI/UX Interactions:
+
+• Design clear interactions for when the drone approaches a hotspot. This could trigger 2D overlays showing project details.
+
+• Ensure that transitions (via GSAP or similar libraries) are smooth and consistent with your cyberpunk aesthetic.
+
+7. Implement Performance Optimizations:
+
+• Apply Level of Detail (LOD) techniques to switch between high-detail and simplified models based on camera distance.
+• Optimize texture sizes, use compressed formats, and enable frustum culling to avoid rendering off-screen objects.
+
+8. User Testing and Iteration:
+
+• Conduct usability tests to evaluate how intuitive the drone controls and hotspot interactions are.
+
+• Gather feedback on performance and visual coherence, then iterate on model placement, shader effects, and UI transitions.
+
+9. Final Integration and Deployment:
+
+Once all models and UI components are optimized and tested, prepare your build configuration for production (using Vite/Webpack optimizations).
+Document all changes and create a deployment guide to streamline future updates.
