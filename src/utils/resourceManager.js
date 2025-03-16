@@ -28,12 +28,14 @@ class ResourceManager {
     // GLTF loader with Draco compression
     this.gltfLoader = new GLTFLoader();
     this.dracoLoader = new DRACOLoader();
-    this.dracoLoader.setDecoderPath('/draco/'); // Path to draco decoder
+    this.dracoLoader.setDecoderPath('/draco/');
+    this.dracoLoader.setDecoderConfig({ type: 'wasm' }); // Path to draco decoder
     this.gltfLoader.setDRACOLoader(this.dracoLoader);
     
     // KTX2 loader for compressed textures
     this.ktx2Loader = new KTX2Loader();
-    this.ktx2Loader.setTranscoderPath('/basis/'); // Path to KTX2 transcoder
+    this.ktx2Loader.setTranscoderPath('/basis/');
+    // Removed the problematic line: this.ktx2Loader.setTranscoderConfig({ type: 'wasm' });
     if (renderer) {
       this.ktx2Loader.detectSupport(renderer);
     }

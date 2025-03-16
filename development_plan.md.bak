@@ -84,27 +84,11 @@ Step-by-Step Proposal
 
 • Verify that your current cyberpunk city map is fully integrated into your Three.js scene.
 • Run performance tests (using tools like stats.js) to understand baseline metrics.
-• Top-Down Orthographic Camera:
-Instead of a Perspective Camera, change the camera of `DroneNavigation`. You'll primarily use an `OrthographicCamera` for the top-down view. 
-This camera doesn't simulate perspective, giving you a parallel projection, like a map.
-Camera Position: Position the camera high above the city, looking straight down.
-Camera Zoom: Adjust the zoom property of the OrthographicCamera to control the level of detail visible.
-Camera Movement: Implement panning (moving the camera horizontally and vertically) using mouse drag or touch gestures.
-
-• 3D City Environment:
-
-City Model: You'll need a 3D model of your city. This could be generated procedurally, created from GIS data, or designed manually.
-Simplified Geometry: For performance, consider using simplified geometry for buildings and other city elements.
-Texture Atlases: Use texture atlases to reduce the number of draw calls and improve performance.
 
 2. Acquire the Drone Model:
 
 • Source a futuristic drone model that fits your design style. Consider marketplaces (like Sketchfab or TurboSquid) or create one in Blender.
 • Ensure the model is rigged and optimized (preferably with Draco compression support for efficient loading).
-Click-to-Move: Allow the user to click on a location in the city to move the drone to that point.
-Path Following: Implement a system for the drone to follow a pre-defined path.
-Smooth Transitions: Use interpolation or animation libraries to create smooth transitions between drone positions and orientations.
-
 
 3. Implement a Robust Asset Loader:
 

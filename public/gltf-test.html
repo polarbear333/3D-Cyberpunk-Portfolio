@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Simple GLTF Model Test</title>
+    <style>
+        body { margin: 0; padding: 0; overflow: hidden; background-color: #0a0a0a; color: #00FFFF; font-family: Arial, sans-serif; }
+        canvas { display: block; width: 100%; height: 100%; }
+        #info {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0,0,0,0.7);
+            color: white;
+            padding: 10px;
+            font-family: monospace;
+            max-width: 400px;
+            overflow: auto;
+            max-height: 80vh;
+        }
+        #loader {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div id="info">Testing GLTF loading...</div>
+    <div id="loader">Loading Three.js...</div>
+
+    <!-- Single unified version of Three.js that includes everything we need -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.149.0/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.149.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.149.0/examples/js/loaders/GLTFLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.149.0/examples/js/loaders/DRACOLoader.js"></script>
+
+    <script>
+        // Wait for DOM content to load
+        document.addEventListener('DOMContentLoaded', function() {
+            const infoDiv = document.getElementById('info');
+            const loaderDiv = document.getElementById('loader');
+
+            function log(message, isError = false) {
+                const p = document.createElement('p');
+                p.textContent = message;
+                if (isError) p.style.color = 'red';
+                infoDiv.appendChild(p);
+                console.log(message);
+            }
+
+            // Check if Three.js is loaded
+            if (typeof THREE === 'undefined') {
+                log("ERROR: Three.js not loaded", true);
+                loaderDiv.textContent = "Error: Three.js not loaded";
+                return;
+            }
+
+            log("Three.js loaded successfully");
+            loaderDiv.textContent = "Setting up scene...";
+
+            // Create scene
+            const scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x0a0a0a);
+
+            // Create camera
+            const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 5, 10);
+
+            // Create renderer
+            const renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+            renderer.shadowMap.enabled = true;
+
+            // Add lights
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+            scene.add(ambientLight);
+
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+            directionalLight.position.set(5, 10, 7.5);
+            directionalLight.castShadow = true;
+            scene.add(directionalLight);
+
+            // Add orbit controls
+            let controls;
+            try {
+                controls = new THREE.OrbitControls(camera, renderer.domElement);
+                log("OrbitControls initialized successfully");
+            } catch (error) {
+                log(`ERROR: ${error.message}`, true);
+            }
+
+            // Add a grid for reference
+            const gridHelper = new THREE.GridHelper(20, 20);
+            scene.add(gridHelper);
+
+            // Add a cube as a fallback
+            const geometry = new THREE.BoxGeometry(1, 1, 1);
+            const material = new THREE.MeshStandardMaterial({ color: 0x00ffff });
+            const cube = new THREE.Mesh(geometry, material);
+            scene.add(cube);
+            log("Added reference cube");
+
+            // Try to load GLTF model
+            try {
+                // Create loaders
+                if (typeof THREE.GLTFLoader === 'undefined') {
+                    log("ERROR: GLTFLoader not available", true);
+                } else {
+                    const gltfLoader = new THREE.GLTFLoader();
+                    
+                    // Check if DRACOLoader is available
+                    if (typeof THREE.DRACOLoader !== 'undefined') {
+                        log("DRACOLoader available, configuring...");
+                        const dracoLoader = new THREE.DRACOLoader();
+                        dracoLoader.setDecoderPath('public/draco/');
+                        gltfLoader.setDRACOLoader(dracoLoader);
+                    } else {
+                        log("DRACOLoader not available, will try to load model without Draco decompression", true);
+                    }
+
+                    // Try to load the model
+                    const modelPath = '/models/cybercity/scene_compressed.gltf';
+                    log(`Attempting to load model from: ${modelPath}`);
+                    
+                    // First check if file exists
+                    fetch(modelPath)
+                        .then(response => {
+                            if (!response.ok) {
+                                throw new Error(`File not found (${response.status})`);
+                            }
+                            return response;
+                        })
+                        .then(() => {
+                            log("Model file exists, loading...");
+                            loaderDiv.textContent = "Loading model...";
+                            
+                            // Load the model
+                            gltfLoader.load(
+                                modelPath,
+                                function(gltf) {
+                                    log("Model loaded successfully!");
+                                    loaderDiv.style.display = 'none';
+                                    
+                                    // Add to scene
+                                    scene.add(gltf.scene);
+                                    
+                                    // Center camera on model
+                                    const box = new THREE.Box3().setFromObject(gltf.scene);
+                                    const center = box.getCenter(new THREE.Vector3());
+                                    const size = box.getSize(new THREE.Vector3()).length();
+                                    
+                                    controls.target.copy(center);
+                                    camera.position.copy(center);
+                                    camera.position.z += size;
+                                    camera.position.y += size / 3;
+                                    controls.update();
+                                    
+                                    log(`Model added to scene with ${gltf.scene.children.length} top-level objects`);
+                                },
+                                function(xhr) {
+                                    const percent = Math.floor((xhr.loaded / xhr.total) * 100);
+                                    log(`Loading: ${percent}%`);
+                                    loaderDiv.textContent = `Loading model: ${percent}%`;
+                                },
+                                function(error) {
+                                    log(`Error loading model: ${error.message}`, true);
+                                    loaderDiv.textContent = "Error loading model";
+                                }
+                            );
+                        })
+                        .catch(error => {
+                            log(`Error: ${error.message}`, true);
+                            loaderDiv.textContent = error.message;
+                        });
+                }
+            } catch (error) {
+                log(`Unexpected error: ${error.message}`, true);
+            }
+
+            // Animation loop
+            function animate() {
+                requestAnimationFrame(animate);
+                if (controls) controls.update();
+                cube.rotation.x += 0.01;
+                cube.rotation.y += 0.01;
+                renderer.render(scene, camera);
+            }
+            animate();
+
+            // Handle window resize
+            window.addEventListener('resize', function() {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+            });
+        });
+    </script>
+</body>
+</html>

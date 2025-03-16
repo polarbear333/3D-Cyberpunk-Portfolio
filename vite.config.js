@@ -33,9 +33,13 @@ export default defineConfig({
         },
       },
     },
+    assetsInclude: ['**/*.wasm', '**/*.js'],
   },
   server: {
     open: true,
     port: 3000,
-  }
+  },
+  define: {
+    'process.env.PUBLIC_URL': JSON.stringify('/public/'),
+  },
 });

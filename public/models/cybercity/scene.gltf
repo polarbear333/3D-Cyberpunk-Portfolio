@@ -3000,127 +3000,127 @@
   ],
   "images": [
     {
-      "uri": "textures/Holograms_baseColor.png"
+      "uri": "textures/Holograms_baseColor.ktx2"
     },
     {
-      "uri": "textures/Streets_outline_baseColor.png"
+      "uri": "textures/Streets_outline_baseColor.ktx2"
     },
     {
-      "uri": "textures/red_light_baseColor.png"
+      "uri": "textures/red_light_baseColor.ktx2"
     },
     {
-      "uri": "textures/Solar_panel_baseColor.png"
+      "uri": "textures/Solar_panel_baseColor.ktx2"
     },
     {
-      "uri": "textures/Solar_panel_base_baseColor.png"
+      "uri": "textures/Solar_panel_base_baseColor.ktx2"
     },
     {
-      "uri": "textures/Publicity_neon_orange_baseColor.png"
+      "uri": "textures/Publicity_neon_orange_baseColor.ktx2"
     },
     {
-      "uri": "textures/Buildings_1_top_baseColor.png"
+      "uri": "textures/Buildings_1_top_baseColor.ktx2"
     },
     {
-      "uri": "textures/Publicity_2D_baseColor.png"
+      "uri": "textures/Publicity_2D_baseColor.ktx2"
     },
     {
-      "uri": "textures/Publicity_2D_emissive.png"
+      "uri": "textures/Publicity_2D_emissive.ktx2"
     },
     {
-      "uri": "textures/Red_dish_baseColor.png"
+      "uri": "textures/Red_dish_baseColor.ktx2"
     },
     {
-      "uri": "textures/Publicity_neon_green_baseColor.png"
+      "uri": "textures/Publicity_neon_green_baseColor.ktx2"
     },
     {
-      "uri": "textures/Publicity_neon_pink_baseColor.png"
+      "uri": "textures/Publicity_neon_pink_baseColor.ktx2"
     },
     {
-      "uri": "textures/Publicity_lights_baseColor.png"
+      "uri": "textures/Publicity_lights_baseColor.ktx2"
     },
     {
-      "uri": "textures/Publicity_lights_emissive.png"
+      "uri": "textures/Publicity_lights_emissive.ktx2"
     },
     {
-      "uri": "textures/Publicity_lights_outline_baseColor.png"
+      "uri": "textures/Publicity_lights_outline_baseColor.ktx2"
     },
     {
-      "uri": "textures/Publicity_neon_blue_baseColor.png"
+      "uri": "textures/Publicity_neon_blue_baseColor.ktx2"
     },
     {
-      "uri": "textures/Trash_baseColor.png"
+      "uri": "textures/Trash_baseColor.ktx2"
     },
     {
-      "uri": "textures/Terrain_baseColor.png"
+      "uri": "textures/Terrain_baseColor.ktx2"
     },
     {
-      "uri": "textures/Buildings_1_baseColor.png"
+      "uri": "textures/Buildings_1_baseColor.ktx2"
     },
     {
-      "uri": "textures/Buildings_0_baseColor.png"
+      "uri": "textures/Buildings_0_baseColor.ktx2"
     },
     {
-      "uri": "textures/Bridge_outline_baseColor.png"
+      "uri": "textures/Bridge_outline_baseColor.ktx2"
     },
     {
-      "uri": "textures/Sidewalks_outline_baseColor.png"
+      "uri": "textures/Sidewalks_outline_baseColor.ktx2"
     },
     {
-      "uri": "textures/Bridge_support_baseColor.png"
+      "uri": "textures/Bridge_support_baseColor.ktx2"
     },
     {
-      "uri": "textures/Buildings_adds_baseColor.png"
+      "uri": "textures/Buildings_adds_baseColor.ktx2"
     },
     {
-      "uri": "textures/Buildings_0_1_baseColor.png"
+      "uri": "textures/Buildings_0_1_baseColor.ktx2"
     },
     {
-      "uri": "textures/Terrain_base_baseColor.png"
+      "uri": "textures/Terrain_base_baseColor.ktx2"
     },
     {
-      "uri": "textures/Buildings_0_top_baseColor.png"
+      "uri": "textures/Buildings_0_top_baseColor.ktx2"
     },
     {
-      "uri": "textures/Sidewalks_baseColor.png"
+      "uri": "textures/Sidewalks_baseColor.ktx2"
     },
     {
-      "uri": "textures/Streets_baseColor.png"
+      "uri": "textures/Streets_baseColor.ktx2"
     },
     {
-      "uri": "textures/Streets_2_baseColor.png"
+      "uri": "textures/Streets_2_baseColor.ktx2"
     },
     {
-      "uri": "textures/Buildings_adds_top_baseColor.png"
+      "uri": "textures/Buildings_adds_top_baseColor.ktx2"
     },
     {
-      "uri": "textures/Windows_ilum_B_baseColor.png"
+      "uri": "textures/Windows_ilum_B_baseColor.ktx2"
     },
     {
-      "uri": "textures/Windows_ilum_Y_baseColor.png"
+      "uri": "textures/Windows_ilum_Y_baseColor.ktx2"
     },
     {
-      "uri": "textures/Buildings_3_baseColor.png"
+      "uri": "textures/Buildings_3_baseColor.ktx2"
     },
     {
-      "uri": "textures/Publicity_neon_red_baseColor.png"
+      "uri": "textures/Publicity_neon_red_baseColor.ktx2"
     },
     {
-      "uri": "textures/Trees_Base_baseColor.png"
+      "uri": "textures/Trees_Base_baseColor.ktx2"
     },
     {
-      "uri": "textures/Buildings_2_baseColor.png"
+      "uri": "textures/Buildings_2_baseColor.ktx2"
     },
     {
-      "uri": "textures/Alpha_mesh_baseColor.png"
+      "uri": "textures/Alpha_mesh_baseColor.ktx2"
     },
     {
-      "uri": "textures/Play_garden_baseColor.png"
+      "uri": "textures/Play_garden_baseColor.ktx2"
     },
     {
-      "uri": "textures/Bridge_base_baseColor.png"
+      "uri": "textures/Bridge_base_baseColor.ktx2"
     },
     {
-      "uri": "textures/lamppost_baseColor.png"
+      "uri": "textures/lamppost_baseColor.ktx2"
     }
   ],
   "materials": [
