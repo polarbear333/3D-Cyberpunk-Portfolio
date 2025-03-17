@@ -1,6 +1,6 @@
 import React, { Suspense, useEffect, useState } from 'react';
 import { Canvas } from '@react-three/fiber';
-import { Stats, OrbitControls, Loader } from '@react-three/drei';
+import { OrbitControls, Loader, OrthographicCamera } from '@react-three/drei';
 import { useStore } from './state/useStore';
 import useAudio from './hooks/useAudio';
 import LoadingScreen from './components/UI/LoadingScreen';
@@ -10,9 +10,10 @@ import DroneNavigation from './components/Navigation/DroneNavigation';
 import HotspotManager from './components/Hotspots/HotspotManager';
 import PostProcessing from './components/Effects/PostProcessing';
 import DebugInfo, { CameraTracker } from './components/UI/DebugInfo';
+import StatsPanel from './components/UI/StatsPanel';
 
 function App() {
-  const { isLoading, debugMode, setLoading, soundEnabled } = useStore();
+  const { isLoading, debugMode, setLoading, soundEnabled, cameraMode } = useStore();
   const [audioInitialized, setAudioInitialized] = useState(false);
   
   // Initialize audio using our custom hook
@@ -35,6 +36,7 @@ function App() {
             await audio.loadSound('ambient', '/audio/cyberpunk-ambient.mp3');
             await audio.loadSound('drone', '/audio/drone-engine.mp3');
             await audio.loadSound('click', '/audio/click.mp3');
+            await audio.loadSound('hover', '/audio/hover.mp3');
           } catch (e) {
             console.warn("Audio files not found. Audio will be disabled.");
           }
@@ -51,6 +53,7 @@ function App() {
           setAudioInitialized(true);
         } catch (error) {
           console.error('Failed to initialize audio:', error);
+          setAudioInitialized(false);
         }
       };
       
@@ -100,8 +103,6 @@ function App() {
       {isLoading && <LoadingScreen />}
       
       <Canvas
-        shadows
-        camera={{ position: [0, 15, 30], fov: 60 }}
         gl={{ 
           antialias: true,
           alpha: false,
@@ -109,9 +110,16 @@ function App() {
           stencil: false,
           depth: true
         }}
-        dpr={window.devicePixelRatio > 2 ? 2 : window.devicePixelRatio} // Limit DPR for performance
+        dpr={window.devicePixelRatio > 2 ? 2 : window.devicePixelRatio}
+        // Set default camera with proper lookAt method
+        camera={{
+          position: [-30, 50, -30],
+          fov: 75,
+          near: 0.1,
+          far: 1000
+        }}
       >
-        {debugMode && <Stats />}
+        {/* Removed drei Stats component in favor of our custom StatsPanel */}
         <Suspense fallback={null}>
           {/* Main 3D scene */}
           <CityScene />
@@ -127,9 +135,25 @@ function App() {
           
           {/* Camera position tracker for debug info */}
           <CameraTracker />
+          
+          {/* Orthographic camera as a component, not default */}
+          {cameraMode === 'orthoAngled' && (
+            <OrthographicCamera
+              makeDefault
+              position={[-30, 50, -30]}
+              zoom={15}
+              near={1}
+              far={1000}
+              left={-window.innerWidth / window.innerHeight * 10}
+              right={window.innerWidth / window.innerHeight * 10}
+              top={10}
+              bottom={-10}
+            />
+          )}
         </Suspense>
         
-        {debugMode && <OrbitControls />}
+        {/* Only enable OrbitControls in debug mode */}
+        {debugMode && <OrbitControls enablePan={true} enableZoom={true} enableRotate={true} />}
       </Canvas>
       
       {/* Loading indicator for 3D assets */}
@@ -156,6 +180,9 @@ function App() {
       
       {/* Debug Info - now outside the Canvas */}
       <DebugInfo />
+      
+      {/* Performance monitoring using stats.js */}
+      {debugMode && <StatsPanel mode={0} position="top-left" />}
     </div>
   );
 }

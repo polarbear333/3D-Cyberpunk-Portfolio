@@ -10,12 +10,16 @@ const useStore = create((set, get) => ({
   dronePosition: new Vector3(0, 10, 0),
   droneRotation: new Euler(0, 0, 0), // Changed to Euler for proper rotation
   droneVelocity: new Vector3(0, 0, 0),
-  cameraMode: 'thirdPerson', // 'firstPerson' or 'thirdPerson'
+  cameraMode: 'orthoAngled', // 'orthoAngled', 'topDown', 'firstPerson' or 'thirdPerson'
   
   // Navigation settings
   droneSpeed: 1.0,
   droneAcceleration: 0.05,
   droneTurnSpeed: 0.02,
+  
+  // Target navigation
+  targetPosition: null,
+  isMovingToTarget: false,
   
   // City and collision boundaries
   cityBounds: null,  // Will be set when the city model loads
@@ -41,6 +45,18 @@ const useStore = create((set, get) => ({
   updateDroneVelocity: (velocity) => set({ droneVelocity: velocity }),
   setCameraMode: (mode) => set({ cameraMode: mode }),
   
+  // Set target position for drone to move to
+  setTargetPosition: (position) => set({ 
+    targetPosition: position,
+    isMovingToTarget: position !== null
+  }),
+  
+  // Clear target position
+  clearTargetPosition: () => set({ 
+    targetPosition: null,
+    isMovingToTarget: false 
+  }),
+  
   setCityBounds: (bounds) => set({ cityBounds: bounds }),
   addCollisionObject: (object) => set((state) => ({ 
     collisionObjects: [...state.collisionObjects, object] 
@@ -64,15 +80,43 @@ const useStore = create((set, get) => ({
     );
   },
   
+  // Load projects from JSON file
   loadProjects: async () => {
     try {
       // This could fetch from a CMS or local JSON
       const response = await fetch('/data/projects.json');
+      
+      // If the JSON file doesn't exist, use default projects
+      if (!response.ok) {
+        console.warn('Projects JSON not found, using default projects');
+        return;
+      }
+      
       const projects = await response.json();
       set({ projects });
     } catch (error) {
       console.error('Failed to load projects', error);
     }
+  },
+  
+  // Navigate to a specific hotspot
+  navigateToHotspot: (hotspotId) => {
+    const { projects } = get();
+    
+    // Find the project by ID
+    const project = projects.find(p => p.id === hotspotId);
+    
+    if (project && project.position) {
+      // Set target position for navigation
+      set({ 
+        targetPosition: new Vector3(...project.position),
+        isMovingToTarget: true,
+        activeHotspotId: hotspotId
+      });
+      return true;
+    }
+    
+    return false;
   }
 }));
 

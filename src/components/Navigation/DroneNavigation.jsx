@@ -1,33 +1,69 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
-import { PerspectiveCamera, useGLTF } from '@react-three/drei';
-import { Vector3, Quaternion, Euler, MathUtils, Box3, Raycaster, PointLight } from 'three';
+import { PerspectiveCamera, OrthographicCamera, useGLTF } from '@react-three/drei';
+import { 
+  Vector3, 
+  Quaternion, 
+  Euler, 
+  MathUtils, 
+  Box3, 
+  Raycaster, 
+  PointLight, 
+  Matrix4 
+} from 'three';
 import { useStore } from '../../state/useStore';
 import { gsap } from 'gsap';
 
 // Load the drone model
 const DRONE_MODEL_PATH = '/models/cyberdrone/drone.glb'; 
-// You'll need to create or acquire a drone model and put it in this location
 
 const DroneNavigation = ({ audio }) => {
   const { 
     dronePosition, droneRotation, droneVelocity, cameraMode,
     droneSpeed, droneAcceleration, droneTurnSpeed, cityBounds,
     updateDronePosition, updateDroneRotation, updateDroneVelocity,
-    setCameraMode, debugMode, soundEnabled
+    setCameraMode, debugMode, soundEnabled, activeHotspotId, setActiveHotspot
   } = useStore();
   
   // Debug state
   const [initialized, setInitialized] = useState(false);
   const [collisionPoints, setCollisionPoints] = useState([]);
   const [engineSoundPlaying, setEngineSoundPlaying] = useState(false);
+  const [isMovingToTarget, setIsMovingToTarget] = useState(false);
 
   // References for the drone model and camera
   const droneRef = useRef();
   const droneModelRef = useRef();
   const propellersRef = useRef([]);
   const cameraRef = useRef();
+  const orthoCameraRef = useRef();
   const { camera, gl, scene } = useThree();
+  
+  // Target position reference
+  const targetPositionRef = useRef(null);
+  
+  // Reusable temporary objects for performance optimization
+  const tempVector = useRef(new Vector3());
+  const tempVector2 = useRef(new Vector3());
+  const tempVector3 = useRef(new Vector3());
+  const tempQuaternion = useRef(new Quaternion());
+  const tempEuler = useRef(new Euler());
+  const tempDirection = useRef(new Vector3());
+  const tempRightVector = useRef(new Vector3());
+  const tempMatrix = useRef(new Matrix4());
+  
+  // Collision detection reusable objects
+  const raycasterRef = useRef(new Raycaster());
+  const tempNormal = useRef(new Vector3());
+  const tempCollisionPoint = useRef(new Vector3());
+  const tempNewPosition = useRef(new Vector3());
+  const tempNewVelocity = useRef(new Vector3());
+  const tempDirectionVector = useRef(new Vector3());
+  
+  // Cache for collision detection results
+  const lastVelocityRef = useRef(new Vector3());
+  const lastCollisionResultRef = useRef(null);
+  const frameCountRef = useRef(0);
   
   // Initialize drone position once
   useEffect(() => {
@@ -36,10 +72,17 @@ const DroneNavigation = ({ audio }) => {
       updateDronePosition(new Vector3(0, 10, 0));
       updateDroneRotation(new Euler(0, 0, 0));
       updateDroneVelocity(new Vector3(0, 0, 0));
-      setCameraMode('thirdPerson');
+      
+      // Set camera mode to orthographic angled view
+      setCameraMode('orthoAngled');
+      
       setInitialized(true);
+      
+      // Stats.js is now handled by the StatsPanel component
     }
-  }, [initialized, updateDronePosition, updateDroneRotation, updateDroneVelocity, setCameraMode]);
+  }, [initialized, updateDronePosition, updateDroneRotation, updateDroneVelocity, setCameraMode, debugMode]);
+  
+  // Stats.js cleanup is now handled by the StatsPanel component
   
   // Try to load the drone model if available
   let droneModel;
@@ -154,17 +197,17 @@ const DroneNavigation = ({ audio }) => {
     // Toggle camera mode with 'C' key
     const handleCameraToggle = (e) => {
       if (e.code === 'KeyC') {
-        const newMode = cameraMode === 'firstPerson' ? 'thirdPerson' : 'firstPerson';
-        useStore.getState().setCameraMode(newMode);
+        const modes = ['orthoAngled', 'topDown', 'thirdPerson', 'firstPerson'];
+        const currentIndex = modes.indexOf(cameraMode);
+        const newMode = modes[(currentIndex + 1) % modes.length];
         
-        // Smooth transition between camera modes
-        gsap.to(camera.position, {
-          x: newMode === 'firstPerson' ? 0 : 5,
-          y: newMode === 'firstPerson' ? 0.5 : 3,
-          z: newMode === 'firstPerson' ? 0 : 5,
-          duration: 1,
-          ease: 'power2.inOut'
-        });
+        setCameraMode(newMode);
+        console.log(`Camera mode switched to: ${newMode}`);
+        
+        // Play a sound for mode change
+        if (audio?.isInitialized && soundEnabled) {
+          audio.playSound('click', { volume: 0.5 });
+        }
       }
     };
     
@@ -177,21 +220,105 @@ const DroneNavigation = ({ audio }) => {
       window.removeEventListener('keyup', handleKeyUp);
       window.removeEventListener('keypress', handleCameraToggle);
     };
-  }, [cameraMode]);
+  }, [cameraMode, setCameraMode, audio, soundEnabled]);
   
-  // Set up collision detection
-  const raycaster = new Raycaster();
-  const collisionDirections = [
+  // Handle mouse click for target navigation
+  useEffect(() => {
+    const handleClick = (event) => {
+      // Convert mouse position to normalized device coordinates
+      const mouse = {
+        x: (event.clientX / window.innerWidth) * 2 - 1,
+        y: -(event.clientY / window.innerHeight) * 2 + 1
+      };
+      
+      // Update the picking ray
+      raycasterRef.current.setFromCamera(mouse, camera);
+      
+      // Find intersections with floor plane
+      const groundPlane = scene.children.find(child => 
+        child.isObject3D && 
+        child.type === 'Mesh' && 
+        child.rotation.x === -Math.PI / 2
+      );
+      
+      if (groundPlane) {
+        const intersects = raycasterRef.current.intersectObject(groundPlane);
+        
+        if (intersects.length > 0) {
+          // Set target position for drone to move to
+          const clickPoint = intersects[0].point;
+          targetPositionRef.current = clickPoint.clone();
+          setIsMovingToTarget(true);
+          
+          // Play click sound
+          if (audio?.isInitialized && soundEnabled) {
+            audio.playSound('click', { volume: 0.3 });
+          }
+          
+          console.log(`Moving to: ${clickPoint.x.toFixed(2)}, ${clickPoint.y.toFixed(2)}, ${clickPoint.z.toFixed(2)}`);
+        }
+      }
+      
+      // Check for hotspot intersections
+      const hotspots = scene.children.filter(child => 
+        child.isObject3D && 
+        child.type === 'Group' && 
+        child.name.includes('hotspot')
+      );
+      
+      const hotspotIntersects = raycasterRef.current.intersectObjects(hotspots, true);
+      
+      if (hotspotIntersects.length > 0) {
+        let hotspotObject = hotspotIntersects[0].object;
+        
+        // Traverse up to find the hotspot group
+        while (hotspotObject && !hotspotObject.name.includes('hotspot')) {
+          hotspotObject = hotspotObject.parent;
+        }
+        
+        if (hotspotObject) {
+          const hotspotId = hotspotObject.name.replace('hotspot-', '');
+          setActiveHotspot(hotspotId);
+          
+          // Set target position to the hotspot
+          targetPositionRef.current = hotspotObject.position.clone();
+          setIsMovingToTarget(true);
+          
+          console.log(`Selected hotspot: ${hotspotId}`);
+        }
+      }
+    };
+    
+    window.addEventListener('click', handleClick);
+    
+    return () => {
+      window.removeEventListener('click', handleClick);
+    };
+  }, [camera, scene, audio, soundEnabled, setActiveHotspot]);
+  
+  // Set up collision directions once
+  const collisionDirections = useRef([
     new Vector3(1, 0, 0),    // right
     new Vector3(-1, 0, 0),   // left
     new Vector3(0, 0, 1),    // forward
     new Vector3(0, 0, -1),   // backward
     new Vector3(0, -1, 0),   // down
-  ];
+  ]);
   
-  // Collision detection function
+  // Optimized collision detection function with memory reuse
   const checkCollisions = (position, velocity) => {
     if (!initialized) return { hasCollision: false, position, velocity };
+    
+    // Increment frame counter for throttling
+    frameCountRef.current = (frameCountRef.current + 1) % 3;
+    
+    // Only check collisions every few frames unless velocity changed significantly
+    if (frameCountRef.current !== 0 && velocity.lengthSq() < lastVelocityRef.current.lengthSq() * 1.2) {
+      return lastCollisionResultRef.current || { hasCollision: false, position, velocity };
+    }
+    
+    // Store current velocity for next frame comparison
+    lastVelocityRef.current.copy(velocity);
     
     // Reset collision points if in debug mode
     if (debugMode) {
@@ -200,8 +327,10 @@ const DroneNavigation = ({ audio }) => {
     
     let hasCollision = false;
     const collisionDistance = 0.5; // Distance for collision detection
-    const newPosition = position.clone();
-    const newVelocity = velocity.clone();
+    
+    // Reuse vector objects instead of creating new ones
+    tempNewPosition.current.copy(position);
+    tempNewVelocity.current.copy(velocity);
     
     // Check if position is within city bounds
     if (cityBounds) {
@@ -209,22 +338,22 @@ const DroneNavigation = ({ audio }) => {
       const buffer = 5; 
       
       if (position.x < cityBounds.min.x + buffer) {
-        newPosition.x = cityBounds.min.x + buffer;
-        newVelocity.x = Math.max(0, newVelocity.x);
+        tempNewPosition.current.x = cityBounds.min.x + buffer;
+        tempNewVelocity.current.x = Math.max(0, tempNewVelocity.current.x);
         hasCollision = true;
       } else if (position.x > cityBounds.max.x - buffer) {
-        newPosition.x = cityBounds.max.x - buffer;
-        newVelocity.x = Math.min(0, newVelocity.x);
+        tempNewPosition.current.x = cityBounds.max.x - buffer;
+        tempNewVelocity.current.x = Math.min(0, tempNewVelocity.current.x);
         hasCollision = true;
       }
       
       if (position.z < cityBounds.min.z + buffer) {
-        newPosition.z = cityBounds.min.z + buffer;
-        newVelocity.z = Math.max(0, newVelocity.z);
+        tempNewPosition.current.z = cityBounds.min.z + buffer;
+        tempNewVelocity.current.z = Math.max(0, tempNewVelocity.current.z);
         hasCollision = true;
       } else if (position.z > cityBounds.max.z - buffer) {
-        newPosition.z = cityBounds.max.z - buffer;
-        newVelocity.z = Math.min(0, newVelocity.z);
+        tempNewPosition.current.z = cityBounds.max.z - buffer;
+        tempNewVelocity.current.z = Math.min(0, tempNewVelocity.current.z);
         hasCollision = true;
       }
       
@@ -233,59 +362,70 @@ const DroneNavigation = ({ audio }) => {
       const maxHeight = cityBounds.max.y - buffer;
       
       if (position.y < minHeight) {
-        newPosition.y = minHeight;
-        newVelocity.y = Math.max(0, newVelocity.y);
+        tempNewPosition.current.y = minHeight;
+        tempNewVelocity.current.y = Math.max(0, tempNewVelocity.current.y);
         hasCollision = true;
       } else if (position.y > maxHeight) {
-        newPosition.y = maxHeight;
-        newVelocity.y = Math.min(0, newVelocity.y);
+        tempNewPosition.current.y = maxHeight;
+        tempNewVelocity.current.y = Math.min(0, tempNewVelocity.current.y);
         hasCollision = true;
       }
     }
     
-    // Check each direction for collisions with scene objects
-    collisionDirections.forEach(dir => {
-      // Adjust direction based on drone rotation for forward/backward/left/right
-      let direction = dir.clone();
-      if (dir.z !== 0 || dir.x !== 0) {
-        const quaternion = new Quaternion().setFromEuler(new Euler(0, droneRotation.y, 0));
-        direction.applyQuaternion(quaternion);
-      }
+    // Skip detailed collision checks if we're already at the boundary
+    if (!hasCollision && velocity.lengthSq() > 0.01) {
+      // Only check when moving at a significant speed
       
-      // Set up raycaster
-      raycaster.set(position, direction.normalize());
-      
-      // Get intersections with all objects in the scene
-      const intersects = raycaster.intersectObjects(scene.children, true);
-      
-      // Check if any intersections are within our collision distance
-      if (intersects.length > 0 && intersects[0].distance < collisionDistance) {
-        hasCollision = true;
+      // Instead of checking all directions, only check the direction we're moving
+      if (velocity.lengthSq() > 0.1) {
+        // Forward direction ray (in the direction of travel)
+        tempDirectionVector.current.copy(velocity).normalize();
+        raycasterRef.current.set(position, tempDirectionVector.current);
         
-        // If in debug mode, store collision points for visualization
-        if (debugMode) {
-          setCollisionPoints(points => [...points, intersects[0].point]);
-        }
+        // Only intersect with a filtered subset of objects
+        const intersects = raycasterRef.current.intersectObjects(scene.children, true);
         
-        // Calculate bounce/slide direction
-        const normal = intersects[0].face ? intersects[0].face.normal.clone() : direction.clone().negate();
-        const dot = velocity.clone().normalize().dot(normal);
-        
-        if (dot < 0) {
-          // Component of velocity in the direction of the normal
-          const normalComponent = normal.clone().multiplyScalar(dot);
+        // Check if any intersections are within our collision distance
+        if (intersects.length > 0 && intersects[0].distance < collisionDistance) {
+          hasCollision = true;
           
-          // Subtract the normal component to get the tangential component
-          // This creates a sliding effect along surfaces
-          newVelocity.sub(normalComponent);
+          // If in debug mode, store collision points for visualization
+          if (debugMode) {
+            tempCollisionPoint.current.copy(intersects[0].point);
+            setCollisionPoints(points => [...points, tempCollisionPoint.current.clone()]);
+          }
           
-          // Apply some damping to simulate energy loss in collision
-          newVelocity.multiplyScalar(0.8);
+          // Calculate bounce/slide direction
+          if (intersects[0].face) {
+            tempNormal.current.copy(intersects[0].face.normal);
+          } else {
+            tempNormal.current.copy(tempDirectionVector.current).negate();
+          }
+          
+          const dot = tempNewVelocity.current.dot(tempNormal.current);
+          
+          if (dot < 0) {
+            // Component of velocity in the direction of the normal (reuse tempVector3)
+            tempVector3.current.copy(tempNormal.current).multiplyScalar(dot);
+            
+            // Subtract the normal component to get the tangential component
+            tempNewVelocity.current.sub(tempVector3.current);
+            
+            // Apply some damping to simulate energy loss in collision
+            tempNewVelocity.current.multiplyScalar(0.8);
+          }
         }
       }
-    });
+    }
     
-    return { hasCollision, position: newPosition, velocity: newVelocity };
+    // Cache the result for next frame
+    lastCollisionResultRef.current = { 
+      hasCollision, 
+      position: tempNewPosition.current.clone(), 
+      velocity: tempNewVelocity.current.clone() 
+    };
+    
+    return lastCollisionResultRef.current;
   };
   
   // Propeller animation
@@ -299,8 +439,6 @@ const DroneNavigation = ({ audio }) => {
     
     // Animate drone tilt based on movement
     if (droneModelRef.current) {
-      const speed = droneVelocity.length();
-      
       // Calculate desired tilt angles based on movement direction
       let targetTiltX = 0;
       let targetTiltZ = 0;
@@ -318,98 +456,177 @@ const DroneNavigation = ({ audio }) => {
         overwrite: true,
       });
     }
+    
+    // Stats.js update is now handled by the StatsPanel component
   });
   
   // Update drone position and rotation on each frame
-  useFrame((_, delta) => {
+  useFrame((state, delta) => {
     if (!droneRef.current) return;
     
-    // Get the current velocity and rotation
-    const velocity = new Vector3(...droneVelocity.toArray());
-    const rotation = new Euler(...droneRotation.toArray());
+    // Use temp objects to avoid creating new ones
+    tempVector.current.set(droneVelocity.x, droneVelocity.y, droneVelocity.z);
+    tempEuler.current.set(droneRotation.x, droneRotation.y, droneRotation.z);
     
-    // Apply rotation changes
-    if (keys.current.turnLeft) rotation.y += droneTurnSpeed;
-    if (keys.current.turnRight) rotation.y -= droneTurnSpeed;
-    if (keys.current.pitchUp) rotation.x += droneTurnSpeed * 0.5;
-    if (keys.current.pitchDown) rotation.x -= droneTurnSpeed * 0.5;
-    
-    // Limit pitch rotation
-    rotation.x = Math.max(Math.min(rotation.x, Math.PI / 4), -Math.PI / 4);
-    
-    // Convert rotation to direction vector
-    const direction = new Vector3(0, 0, -1);
-    const quaternion = new Quaternion().setFromEuler(rotation);
-    direction.applyQuaternion(quaternion);
-    
-    // Apply acceleration in the direction of movement
-    if (keys.current.forward) {
-      velocity.x += direction.x * droneAcceleration;
-      velocity.z += direction.z * droneAcceleration;
+    // Handle automatic movement to target position if active
+    if (isMovingToTarget && targetPositionRef.current) {
+      // Calculate direction to target
+      tempDirection.current.copy(targetPositionRef.current).sub(dronePosition).normalize();
+      
+      // Calculate distance to target
+      const distanceToTarget = dronePosition.distanceTo(targetPositionRef.current);
+      
+      // If we're close enough to the target, stop moving
+      if (distanceToTarget < 1) {
+        setIsMovingToTarget(false);
+        targetPositionRef.current = null;
+        updateDroneVelocity(new Vector3(0, 0, 0));
+      } else {
+        // Smoothly rotate toward target
+        const targetAngle = Math.atan2(tempDirection.current.x, tempDirection.current.z);
+        tempEuler.current.y = MathUtils.lerp(tempEuler.current.y, targetAngle, 0.05);
+        
+        // Move toward target
+        const moveSpeed = Math.min(droneSpeed, distanceToTarget * 0.5);
+        tempVector.current.x = tempDirection.current.x * moveSpeed;
+        tempVector.current.z = tempDirection.current.z * moveSpeed;
+        
+        // Maintain current height or adjust if needed
+        if (Math.abs(targetPositionRef.current.y - dronePosition.y) > 0.5) {
+          tempVector.current.y = Math.sign(targetPositionRef.current.y - dronePosition.y) * moveSpeed * 0.5;
+        } else {
+          tempVector.current.y = 0;
+        }
+      }
+    } else {
+      // Manual control with keyboard
+      
+      // Apply rotation changes
+      if (keys.current.turnLeft) tempEuler.current.y += droneTurnSpeed;
+      if (keys.current.turnRight) tempEuler.current.y -= droneTurnSpeed;
+      if (keys.current.pitchUp) tempEuler.current.x += droneTurnSpeed * 0.5;
+      if (keys.current.pitchDown) tempEuler.current.x -= droneTurnSpeed * 0.5;
+      
+      // Limit pitch rotation
+      tempEuler.current.x = Math.max(Math.min(tempEuler.current.x, Math.PI / 4), -Math.PI / 4);
+      
+      // Convert rotation to direction vector (reuse tempDirection)
+      tempDirection.current.set(0, 0, -1);
+      tempQuaternion.current.setFromEuler(tempEuler.current);
+      tempDirection.current.applyQuaternion(tempQuaternion.current);
+      
+      // Apply acceleration in the direction of movement
+      if (keys.current.forward) {
+        tempVector.current.x += tempDirection.current.x * droneAcceleration;
+        tempVector.current.z += tempDirection.current.z * droneAcceleration;
+      }
+      if (keys.current.backward) {
+        tempVector.current.x -= tempDirection.current.x * droneAcceleration;
+        tempVector.current.z -= tempDirection.current.z * droneAcceleration;
+      }
+      
+      // Strafe movement (reuse tempRightVector)
+      tempRightVector.current.set(1, 0, 0).applyQuaternion(tempQuaternion.current);
+      if (keys.current.right) {
+        tempVector.current.x += tempRightVector.current.x * droneAcceleration;
+        tempVector.current.z += tempRightVector.current.z * droneAcceleration;
+      }
+      if (keys.current.left) {
+        tempVector.current.x -= tempRightVector.current.x * droneAcceleration;
+        tempVector.current.z -= tempRightVector.current.z * droneAcceleration;
+      }
+      
+      // Vertical movement
+      if (keys.current.up) tempVector.current.y += droneAcceleration;
+      if (keys.current.down) tempVector.current.y -= droneAcceleration;
+      
+      // Apply friction/drag
+      tempVector.current.multiplyScalar(0.95);
     }
-    if (keys.current.backward) {
-      velocity.x -= direction.x * droneAcceleration;
-      velocity.z -= direction.z * droneAcceleration;
-    }
-    
-    // Strafe movement
-    const rightVector = new Vector3(1, 0, 0).applyQuaternion(quaternion);
-    if (keys.current.right) {
-      velocity.x += rightVector.x * droneAcceleration;
-      velocity.z += rightVector.z * droneAcceleration;
-    }
-    if (keys.current.left) {
-      velocity.x -= rightVector.x * droneAcceleration;
-      velocity.z -= rightVector.z * droneAcceleration;
-    }
-    
-    // Vertical movement
-    if (keys.current.up) velocity.y += droneAcceleration;
-    if (keys.current.down) velocity.y -= droneAcceleration;
-    
-    // Apply friction/drag
-    velocity.multiplyScalar(0.95);
     
     // Limit maximum speed
     const maxSpeed = droneSpeed;
-    const speedSq = velocity.lengthSq();
+    const speedSq = tempVector.current.lengthSq();
     if (speedSq > maxSpeed * maxSpeed) {
-      velocity.multiplyScalar(maxSpeed / Math.sqrt(speedSq));
+      tempVector.current.multiplyScalar(maxSpeed / Math.sqrt(speedSq));
     }
     
-    // Calculate next position with velocity
-    const nextPosition = new Vector3(...dronePosition.toArray()).add(
-      velocity.clone().multiplyScalar(delta * 60)
-    );
+    // Calculate next position with velocity (reuse tempVector2)
+    tempVector2.current.copy(dronePosition).addScaledVector(tempVector.current, delta * 60);
     
     // Check for collisions
     const { hasCollision, position: adjustedPosition, velocity: adjustedVelocity } = 
-      checkCollisions(nextPosition, velocity);
+      checkCollisions(tempVector2.current, tempVector.current);
     
     // Update state
     updateDronePosition(adjustedPosition);
-    updateDroneRotation(rotation);
+    updateDroneRotation(tempEuler.current);
     updateDroneVelocity(adjustedVelocity);
     
     // Update drone mesh position and rotation
     droneRef.current.position.copy(adjustedPosition);
-    droneRef.current.rotation.copy(rotation);
+    droneRef.current.rotation.copy(tempEuler.current);
     
-    // Update camera if in third-person mode
-    if (cameraMode === 'thirdPerson' && cameraRef.current) {
-      const cameraOffset = new Vector3(
-        -direction.x * 8 + adjustedPosition.x,
-        5 + adjustedPosition.y,
-        -direction.z * 8 + adjustedPosition.z
-      );
-      
-      // Smooth camera follow
-      camera.position.lerp(cameraOffset, 0.1);
-      camera.lookAt(adjustedPosition);
-    } else if (cameraMode === 'firstPerson') {
-      // First-person view
-      camera.position.copy(adjustedPosition.clone().add(new Vector3(0, 0.5, 0)));
-      camera.rotation.copy(rotation);
+    // Update camera based on current mode
+    switch (cameraMode) {
+      case 'orthoAngled':
+        // Position the orthographic camera at an angle above the city (like in the screenshot)
+        if (orthoCameraRef.current) {
+          const cameraHeight = 50;
+          // Reuse temp vectors
+          tempVector3.current.set(-30, cameraHeight, -30);
+          
+          // Set camera position relative to drone but with fixed height and angle
+          camera.position.set(
+            adjustedPosition.x + tempVector3.current.x,
+            cameraHeight,
+            adjustedPosition.z + tempVector3.current.z
+          );
+          
+          // Look at the drone
+          camera.lookAt(adjustedPosition);
+          
+          // Update orthographic camera settings
+          const orthoCamera = orthoCameraRef.current;
+          // Set zoom based on city size or desired view area
+          const orthoZoom = 15; // Adjust as needed
+          orthoCamera.zoom = orthoZoom;
+          orthoCamera.updateProjectionMatrix();
+        }
+        break;
+        
+      case 'topDown':
+        // True top-down view
+        camera.position.set(adjustedPosition.x, 80, adjustedPosition.z);
+        camera.lookAt(adjustedPosition.x, 0, adjustedPosition.z);
+        break;
+        
+      case 'thirdPerson':
+        // Third-person view following the drone - reuse tempDirection
+        tempDirection.current.set(0, 0, -1);
+        tempDirection.current.applyQuaternion(tempQuaternion.current.setFromEuler(tempEuler.current));
+        
+        // Calculate camera position - reuse tempVector3
+        tempVector3.current.set(
+          -tempDirection.current.x * 8 + adjustedPosition.x,
+          5 + adjustedPosition.y,
+          -tempDirection.current.z * 8 + adjustedPosition.z
+        );
+        
+        // Smooth camera follow
+        camera.position.lerp(tempVector3.current, 0.1);
+        camera.lookAt(adjustedPosition);
+        break;
+        
+      case 'firstPerson':
+        // First-person view - reuse tempVector3
+        tempVector3.current.copy(adjustedPosition).add(new Vector3(0, 0.5, 0));
+        camera.position.copy(tempVector3.current);
+        camera.rotation.copy(tempEuler.current);
+        break;
+        
+      default:
+        break;
     }
   });
   
@@ -452,8 +669,27 @@ const DroneNavigation = ({ audio }) => {
         </mesh>
       ))}
       
-      {/* Reference camera for third-person view */}
-      <PerspectiveCamera ref={cameraRef} makeDefault={false} position={[0, 5, 10]} />
+      {/* Orthographic camera for angled view */}
+      <OrthographicCamera
+        ref={orthoCameraRef}
+        makeDefault={cameraMode === 'orthoAngled'}
+        position={[0, 50, 0]}
+        zoom={15}
+        near={1}
+        far={1000}
+        left={-window.innerWidth / window.innerHeight * 10}
+        right={window.innerWidth / window.innerHeight * 10}
+        top={10}
+        bottom={-10}
+      />
+      
+      {/* Reference camera for other views */}
+      <PerspectiveCamera 
+        ref={cameraRef}
+        makeDefault={cameraMode !== 'orthoAngled'} 
+        position={[0, 5, 10]}
+        fov={60}
+      />
     </group>
   );
 };

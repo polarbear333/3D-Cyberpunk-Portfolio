@@ -8,10 +8,11 @@ import { useStore } from '../../state/useStore';
 
 // Main CityScene component
 const CityScene = () => {
-  const { debugMode, setCityBounds } = useStore();
+  const { debugMode, setCityBounds, setLoading } = useStore();
   const [cityLoaded, setCityLoaded] = useState(false);
   const [loadingProgress, setLoadingProgress] = useState(0);
-  
+
+    
   // Get the three.js renderer for debugging
   const { gl: renderer, scene } = useThree();
   
@@ -24,11 +25,12 @@ const CityScene = () => {
   useHelper(debugMode && mainLightRef, DirectionalLightHelper, 5, '#ffffff');
   useHelper(debugMode && spotlightRef, PointLightHelper, 2, '#ff00ff');
 
-  // Load the city model using direct GLTFLoader
+  // Load the city model using direct GLTFLoader to avoid context loss
   useEffect(() => {
     if (cityLoaded) return;
     
     console.log("Loading city model directly...");
+    setLoading(true);
     
     // Create loaders
     const gltfLoader = new GLTFLoader();
@@ -70,11 +72,11 @@ const CityScene = () => {
           (gltf) => {
             console.log("Model loaded successfully!", gltf);
             
-            // Apply optimizations
+            // Apply optimizations without using the complex resource manager
             enhanceModel(gltf.scene);
             
-            // Scale the model
-            gltf.scene.scale.set(0.05, 0.05, 0.05); // Try a smaller scale
+            // Use a much smaller scale to reduce rendering complexity
+            gltf.scene.scale.set(0.03, 0.03, 0.03); // Reduced from 0.05
             
             // Add to scene
             if (cityRef.current) {
@@ -101,6 +103,7 @@ const CityScene = () => {
               
               // Mark as loaded
               setCityLoaded(true);
+              setLoading(false);
             }
           },
           (progress) => {
@@ -112,99 +115,82 @@ const CityScene = () => {
           },
           (error) => {
             console.error("Error loading model:", error);
+            setLoading(false);
           }
         );
       })
       .catch(error => {
         console.error("Failed to load model:", error);
+        setLoading(false);
       });
-  }, [cityLoaded, setCityBounds]);
+  }, [cityLoaded, setCityBounds, setLoading]);
   
-  // Function to enhance model materials
-  const enhanceModel = (model) => {
-    model.traverse((node) => {
-      if (node.isMesh) {
-        // Make sure it's visible
-        node.castShadow = true;
-        node.receiveShadow = true;
-        node.frustumCulled = false; // Disable culling for testing
+  // Function to enhance model materials with optimizations to reduce memory usage
+// Optimized model loading in CityScene.jsx
+const enhanceModel = (model) => {
+  let meshCount = 0;
+  model.traverse((node) => {
+    if (node.isMesh) {
+      meshCount++;
+      
+      // Only enable shadows for large, important objects
+      const isImportant = node.geometry.boundingBox && 
+                          node.geometry.boundingBox.getSize(new Vector3()).length() > 5;
+      node.castShadow = isImportant;
+      node.receiveShadow = isImportant;
+      
+      // Reduce geometry complexity for distant objects
+      if (meshCount > 100) { // Limit detailed meshes
+        node.frustumCulled = true; // Ensure culling is enabled
         
-        // Log mesh info
-        console.log(`Mesh: ${node.name || 'unnamed'}`);
-        
-        // Process materials
+        // Simplify materials
         if (node.material) {
-          // Handle array of materials
-          const materials = Array.isArray(node.material) ? node.material : [node.material];
-          
-          materials.forEach((material, index) => {
-            // Clone to avoid affecting other meshes
-            const clonedMaterial = material.clone();
-            
-            // Check for missing textures
-            if (!clonedMaterial.map) {
-              console.log(`Material has no texture: ${node.name}`);
-              clonedMaterial.color = new Color(0xCCCCCC);
-            }
-            
-            // Add emissive for certain meshes
-            if (node.name.toLowerCase().includes('light') || 
-                node.name.toLowerCase().includes('neon') || 
-                node.name.toLowerCase().includes('glow') ||
-                node.name.toLowerCase().includes('emissive')) {
-                
-              // Choose color based on name
-              let emissiveColor;
-              if (node.name.toLowerCase().includes('red')) {
-                emissiveColor = new Color(0xFF0000);
-              } else if (node.name.toLowerCase().includes('blue')) {
-                emissiveColor = new Color(0x00FFFF);
-              } else if (node.name.toLowerCase().includes('pink')) {
-                emissiveColor = new Color(0xFF00FF);
-              } else if (node.name.toLowerCase().includes('yellow')) {
-                emissiveColor = new Color(0xFFFF00);
-              } else {
-                emissiveColor = new Color(0x00FFFF); // Default cyan
-              }
-              
-              clonedMaterial.emissive = emissiveColor;
-              clonedMaterial.emissiveIntensity = 1.5;
-            }
-            
-            // Update the material
-            clonedMaterial.needsUpdate = true;
-            
-            // Apply back to the mesh
-            if (Array.isArray(node.material)) {
-              node.material[index] = clonedMaterial;
-            } else {
-              node.material = clonedMaterial;
-            }
-          });
+          node.material.flatShading = true;
+          if (node.material.map) {
+            node.material.map.minFilter = THREE.NearestFilter;
+            node.material.map.magFilter = THREE.NearestFilter;
+          }
         }
       }
-    });
-  };
+    }
+  });
+  console.log(`Enhanced ${meshCount} meshes with optimizations`);
+};
   
-  // Animation for neon elements
-  useFrame(({ clock }) => {
-    if (!cityRef.current || !cityLoaded) return;
-    
-    // Pulse emissive materials
+  // Animation for neon elements with reduced frequency to improve performance
+// Optimize animation in CityScene.jsx
+useFrame(({ clock }) => {
+  if (!cityRef.current || !cityLoaded) return;
+  
+  // Only update every 6 frames to reduce overhead
+  if (Math.floor(clock.getElapsedTime() * 10) % 6 !== 0) return;
+  
+  // Instead of traversing the entire model every frame, pre-cache emissive materials
+  if (!emissiveMaterials.current.length && cityRef.current) {
+    emissiveMaterials.current = [];
     cityRef.current.traverse((node) => {
       if (node.isMesh && node.material) {
         const materials = Array.isArray(node.material) ? node.material : [node.material];
-        
         materials.forEach(material => {
           if (material.emissiveIntensity > 0) {
-            const time = clock.getElapsedTime();
-            const pulse = Math.sin(time * 2 + node.position.x * 0.1) * 0.3 + 0.7;
-            material.emissiveIntensity = pulse;
+            emissiveMaterials.current.push({
+              material,
+              position: node.position.clone(),
+            });
           }
         });
       }
     });
+    console.log(`Cached ${emissiveMaterials.current.length} emissive materials for animation`);
+  }
+  
+  // Only update the cached emissive materials
+  const time = clock.getElapsedTime();
+  emissiveMaterials.current.forEach(({ material, position }) => {
+    const pulse = Math.sin(time + position.x * 0.05) * 0.3 + 0.7;
+    material.emissiveIntensity = pulse;
   });
+});
   
   return (
     <group>
@@ -220,8 +206,8 @@ const CityScene = () => {
         intensity={0.3}
         color="#8080FF"
         castShadow
-        shadow-mapSize-width={2048}
-        shadow-mapSize-height={2048}
+        shadow-mapSize-width={1024} // Reduced from 2048
+        shadow-mapSize-height={1024} // Reduced from 2048
         shadow-camera-far={150}
         shadow-camera-left={-75}
         shadow-camera-right={75}
@@ -255,7 +241,7 @@ const CityScene = () => {
         intensity={5}
         distance={80}
         color="#FF00FF"
-        castShadow
+        castShadow={false} // Disabled shadow casting to improve performance
       />
       
       {/* Origin marker for debugging */}
