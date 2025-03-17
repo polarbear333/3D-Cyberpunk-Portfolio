@@ -7,10 +7,9 @@ const useStore = create((set, get) => ({
   debugMode: true, // Set to true for development
   
   // Navigation and camera
-  dronePosition: new Vector3(0, 10, 0),
+  dronePosition: new Vector3(0, 15, 0),
   droneRotation: new Euler(0, 0, 0), // Changed to Euler for proper rotation
   droneVelocity: new Vector3(0, 0, 0),
-  cameraMode: 'orthoAngled', // 'orthoAngled', 'topDown', 'firstPerson' or 'thirdPerson'
   
   // Navigation settings
   droneSpeed: 1.0,
@@ -43,7 +42,6 @@ const useStore = create((set, get) => ({
   updateDronePosition: (position) => set({ dronePosition: position }),
   updateDroneRotation: (rotation) => set({ droneRotation: rotation }),
   updateDroneVelocity: (velocity) => set({ droneVelocity: velocity }),
-  setCameraMode: (mode) => set({ cameraMode: mode }),
   
   // Set target position for drone to move to
   setTargetPosition: (position) => set({ 

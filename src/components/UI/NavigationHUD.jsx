@@ -211,7 +211,7 @@ const NavigationHUD = () => {
         <div className="px-4 py-2 bg-black bg-opacity-60 backdrop-blur-sm text-cyan-400 rounded-lg border border-cyan-600 max-w-md">
           <p className="text-sm">Click on any location to fly there</p>
           <p className="text-sm mt-1">Visit the glowing hotspots to explore projects</p>
-          <p className="text-xs mt-2 text-white opacity-60">Press H for more controls</p>
+          <p className="text-xs mt-2 text-white opacity-60">Press H for controls</p>
         </div>
       </div>
     </div>

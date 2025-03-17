@@ -1,6 +1,7 @@
-import React, { Suspense, useEffect, useState } from 'react';
-import { Canvas } from '@react-three/fiber';
-import { OrbitControls, Loader, OrthographicCamera } from '@react-three/drei';
+import React, { Suspense, useEffect, useState, useRef } from 'react';
+import { Canvas, useFrame, useThree } from '@react-three/fiber';
+import { OrbitControls, Loader } from '@react-three/drei';
+import * as THREE from 'three'; // Add missing THREE import
 import { useStore } from './state/useStore';
 import useAudio from './hooks/useAudio';
 import LoadingScreen from './components/UI/LoadingScreen';
@@ -8,13 +9,36 @@ import Interface from './components/UI/Interface';
 import CityScene from './components/City/CityScene';
 import DroneNavigation from './components/Navigation/DroneNavigation';
 import HotspotManager from './components/Hotspots/HotspotManager';
-import PostProcessing from './components/Effects/PostProcessing';
 import DebugInfo, { CameraTracker } from './components/UI/DebugInfo';
 import StatsPanel from './components/UI/StatsPanel';
 
+// Custom component to handle optimized render loop
+function RenderLoop({ customRender }) {
+  const state = useThree();
+  
+  useFrame(() => {
+    // Call our custom render function
+    customRender(state);
+    // Request another frame
+    state.invalidate();
+  });
+  
+  return null;
+}
+
 function App() {
-  const { isLoading, debugMode, setLoading, soundEnabled, cameraMode } = useStore();
+  const { isLoading, debugMode, setLoading, soundEnabled } = useStore();
   const [audioInitialized, setAudioInitialized] = useState(false);
+  
+  // Low memory mode
+  const lowMemoryMode = useRef(
+    navigator.deviceMemory ? navigator.deviceMemory < 4 : 
+                          navigator.userAgent.includes('Mobile')
+  );
+  
+  // References
+  const canvasRef = useRef(null);
+  const rendererRef = useRef(null);
   
   // Initialize audio using our custom hook
   const audio = useAudio({ 
@@ -98,29 +122,151 @@ function App() {
     }
   }, [soundEnabled, audioInitialized]);
 
+  // Initialize renderer with memory-optimized settings
+  const initRenderer = (state) => {
+    if (!rendererRef.current && state.gl) {
+      rendererRef.current = state.gl;
+      
+      // Configure renderer for memory efficiency
+      rendererRef.current.setClearColor(0x000000);
+      
+      // Lower precision for better performance
+      rendererRef.current.outputEncoding = THREE.LinearEncoding; // Using THREE from import
+      
+      // Reduce shadow map size
+      rendererRef.current.shadowMap.type = THREE.BasicShadowMap; // Using THREE from import
+      
+      // Expose renderer for debugging
+      window.renderer = rendererRef.current;
+      
+      console.log("Renderer configured for memory efficiency");
+    }
+  };
+  
+  // Basic render loop that just renders the scene
+  const basicRenderLoop = (state) => {
+    // Initialize renderer if needed
+    if (!rendererRef.current) {
+      initRenderer(state);
+    }
+    
+    // Simple render that just renders the scene directly
+    state.gl.render(state.scene, state.camera);
+  };
+
+  // Handle memory issues
+  useEffect(() => {
+    // Function to detect low memory conditions
+    const checkMemory = () => {
+      // Check if performance.memory is available (Chrome only)
+      if (window.performance && window.performance.memory) {
+        const memoryInfo = window.performance.memory;
+        const usedJSHeapSize = memoryInfo.usedJSHeapSize;
+        const jsHeapSizeLimit = memoryInfo.jsHeapSizeLimit;
+        const memoryUsage = usedJSHeapSize / jsHeapSizeLimit;
+        
+        // If memory usage is over 80%, enable low memory mode
+        if (memoryUsage > 0.8) {
+          console.warn("High memory usage detected, enabling low memory mode");
+          lowMemoryMode.current = true;
+          
+          // Force a garbage collection if possible
+          if (window.gc) {
+            try {
+              window.gc();
+            } catch (e) {
+              console.warn("Failed to force garbage collection");
+            }
+          }
+        }
+        
+        return memoryUsage;
+      }
+      return null;
+    };
+    
+    // Check memory periodically
+    const memoryCheckInterval = setInterval(checkMemory, 10000);
+    
+    return () => {
+      clearInterval(memoryCheckInterval);
+    };
+  }, []);
+
+  // Handle window resize
+  useEffect(() => {
+    const handleResize = () => {
+      if (rendererRef.current) {
+        // Make sure canvas dimensions are correct
+        rendererRef.current.setSize(window.innerWidth, window.innerHeight);
+        
+        // Update camera aspect ratio
+        if (canvasRef.current) {
+          const camera = canvasRef.current.__r3f?.camera;
+          if (camera) {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+          }
+        }
+      }
+    };
+    
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+  
+  // Emergency memory cleanup
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        // Page is hidden, clean up resources
+        if (window.gc) {
+          try {
+            window.gc();
+          } catch (e) {
+            console.warn("Failed to force garbage collection");
+          }
+        }
+      }
+    };
+    
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, []);
+
   return (
     <div className="w-screen h-screen bg-slate-900 overflow-hidden">
       {isLoading && <LoadingScreen />}
       
       <Canvas
+        ref={canvasRef}
         gl={{ 
-          antialias: true,
+          antialias: false, // Disable antialiasing for performance
           alpha: false,
-          powerPreference: "high-performance",
+          powerPreference: "default", // Use default instead of high-performance
           stencil: false,
-          depth: true
+          depth: true,
+          precision: "lowp", // Use low precision for better performance
         }}
-        dpr={window.devicePixelRatio > 2 ? 2 : window.devicePixelRatio}
-        // Set default camera with proper lookAt method
+        dpr={lowMemoryMode.current ? 1 : (window.devicePixelRatio > 2 ? 2 : window.devicePixelRatio)}
+        // Set initial camera position for the angled perspective view
         camera={{
           position: [-30, 50, -30],
-          fov: 75,
-          near: 0.1,
-          far: 1000
+          fov: 45,
+          near: 1, // Increased near plane for better depth precision
+          far: 1000 // Reduced far plane
         }}
+        // Use simple render loop
+        frameloop="never"
+        onCreated={initRenderer}
+        shadows={false} // Disable shadows in low memory mode
       >
-        {/* Removed drei Stats component in favor of our custom StatsPanel */}
         <Suspense fallback={null}>
+          {/* Add a render loop component */}
+          <RenderLoop customRender={basicRenderLoop} />
+          
           {/* Main 3D scene */}
           <CityScene />
           
@@ -130,46 +276,27 @@ function App() {
           {/* Interactive project hotspots */}
           <HotspotManager audio={audio} />
           
-          {/* Cyberpunk visual effects */}
-          <PostProcessing />
-          
           {/* Camera position tracker for debug info */}
           <CameraTracker />
-          
-          {/* Orthographic camera as a component, not default */}
-          {cameraMode === 'orthoAngled' && (
-            <OrthographicCamera
-              makeDefault
-              position={[-30, 50, -30]}
-              zoom={15}
-              near={1}
-              far={1000}
-              left={-window.innerWidth / window.innerHeight * 10}
-              right={window.innerWidth / window.innerHeight * 10}
-              top={10}
-              bottom={-10}
-            />
-          )}
         </Suspense>
         
         {/* Only enable OrbitControls in debug mode */}
         {debugMode && <OrbitControls enablePan={true} enableZoom={true} enableRotate={true} />}
       </Canvas>
       
-      {/* Loading indicator for 3D assets */}
+      {/* Simplified loading indicator */}
       <Loader 
-        dataInterpolation={(p) => `Loading Cyberpunk City ${p.toFixed(0)}%`}
+        dataInterpolation={(p) => `Loading ${p.toFixed(0)}%`}
         containerStyles={{
           background: 'rgba(0, 0, 0, 0.8)',
-          backdropFilter: 'blur(10px)'
         }}
         barStyles={{
-          background: 'linear-gradient(90deg, #FF00FF, #00FFFF)',
+          background: 'cyan',
           height: '4px',
         }}
         dataStyles={{
-          color: '#00FFFF',
-          fontFamily: 'Orbitron, sans-serif',
+          color: 'cyan',
+          fontFamily: 'monospace',
           fontSize: '1rem',
           marginTop: '1rem',
         }}
@@ -178,11 +305,11 @@ function App() {
       {/* 2D UI overlay */}
       <Interface audio={audio} />
       
-      {/* Debug Info - now outside the Canvas */}
-      <DebugInfo />
+      {/* Debug Info - simplified in low memory mode */}
+      {debugMode && <DebugInfo lowMemoryMode={lowMemoryMode.current} />}
       
-      {/* Performance monitoring using stats.js */}
-      {debugMode && <StatsPanel mode={0} position="top-left" />}
+      {/* Only show stats in debug mode and not in low memory mode */}
+      {debugMode && !lowMemoryMode.current && <StatsPanel mode={0} position="top-left" />}
     </div>
   );
 }

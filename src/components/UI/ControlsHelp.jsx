@@ -118,10 +118,6 @@ const ControlsHelp = ({ audio }) => {
               <span>Pitch Down</span>
             </li>
             <li className="flex items-center">
-              <span className="key-highlight w-8 h-8 bg-gray-800 flex items-center justify-center rounded-md mr-3 border border-cyan-600">C</span>
-              <span>Toggle Camera View</span>
-            </li>
-            <li className="flex items-center">
               <span className="key-highlight w-8 h-8 bg-gray-800 flex items-center justify-center rounded-md mr-3 border border-cyan-600">H</span>
               <span>Toggle This Help</span>
             </li>

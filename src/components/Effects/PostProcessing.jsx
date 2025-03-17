@@ -1,82 +1,98 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { 
-  EffectComposer, 
-  Bloom, 
-  Vignette, 
-  Noise
-} from '@react-three/postprocessing';
-import { BlendFunction, KernelSize } from 'postprocessing';
-import { useThree } from '@react-three/fiber';
+import { useFrame, useThree } from '@react-three/fiber';
+import * as THREE from 'three';
 import { useStore } from '../../state/useStore';
 
+// Extremely simplified post-processing for minimal memory usage
 const PostProcessing = () => {
-  const { gl, scene, camera } = useThree();
-  const composerRef = useRef();
-  const [isSupported, setIsSupported] = useState(true);
+  const { gl, scene, camera, size } = useThree();
+  const [effectsEnabled, setEffectsEnabled] = useState(false);
   const { debugMode } = useStore();
   
-  // Check if the device can handle post-processing
+  // Simple shader for minimal bloom effect
+  const bloomMaterial = useRef();
+  
+  // Initialize bloom shader once
   useEffect(() => {
-    // Check if the device is likely to have trouble with post-processing
+    // Check if device is likely to be low-powered
     const isLowPowerDevice = 
       /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || 
-      (window.devicePixelRatio < 1.5);
+      (window.devicePixelRatio < 1.5) ||
+      (navigator.deviceMemory && navigator.deviceMemory < 4);
     
-    // For low-power devices, disable post-processing completely
+    // Disable effects on low-power devices
     if (isLowPowerDevice) {
       console.log("Low power device detected, disabling post-processing");
-      setIsSupported(false);
+      setEffectsEnabled(false);
+      return;
     }
-    
-    // Clean up function for when component unmounts
-    return () => {
-      if (composerRef.current) {
-        const composer = composerRef.current;
-        if (composer.dispose) {
-          composer.dispose();
+
+    // Create efficient bloom material
+    bloomMaterial.current = new THREE.ShaderMaterial({
+      uniforms: {
+        tDiffuse: { value: null },
+        brightness: { value: 0.3 },
+        intensity: { value: 0.2 },
+      },
+      vertexShader: `
+        varying vec2 vUv;
+        void main() {
+          vUv = uv;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
         }
-      }
-    };
+      `,
+      fragmentShader: `
+        uniform sampler2D tDiffuse;
+        uniform float brightness;
+        uniform float intensity;
+        varying vec2 vUv;
+        
+        void main() {
+          vec4 texel = texture2D(tDiffuse, vUv);
+          
+          // Simple brightness threshold
+          float luminance = dot(texel.rgb, vec3(0.299, 0.587, 0.114));
+          vec3 glow = texel.rgb * step(brightness, luminance);
+          
+          // Add simple bloom
+          gl_FragColor = vec4(texel.rgb + glow * intensity, texel.a);
+        }
+      `
+    });
+    
+    setEffectsEnabled(true);
   }, []);
 
-  // If post-processing is not supported on this device, don't render anything
-  if (!isSupported) return null;
-
-  return (
-    <EffectComposer 
-      ref={composerRef} 
-      multisampling={0} // Disable multisampling for better performance
-      frameBufferType={16} // Use standard precision (16 instead of 32)
-      enabled={true}
-      disableNormalPass
-    >
-      {/* Bloom effect for neon glow - simplified for performance */}
-      <Bloom 
-        intensity={1.0} // Reduced from 1.5
-        luminanceThreshold={0.3} // Increased from 0.2 to affect fewer pixels
-        luminanceSmoothing={0.9}
-        kernelSize={KernelSize.MEDIUM} // Reduced from LARGE
-        mipmapBlur={true} // Enable mipmapping for better performance
-      />
+  // Apply simple post-processing effects
+  useFrame(() => {
+    // Skip if disabled
+    if (!effectsEnabled || debugMode) return;
+    
+    if (bloomMaterial.current) {
+      // Set the scene as the input texture
+      bloomMaterial.current.uniforms.tDiffuse.value = null;
       
-      {/* Vignette for darker edges */}
-      <Vignette
-        offset={0.3}
-        darkness={0.7}
-        blendFunction={BlendFunction.NORMAL}
-      />
+      // Use three.js render-to-texture API directly
+      gl.autoClear = false;
+      gl.clear();
       
-      {/* Film grain noise - only if not in debug mode */}
-      {!debugMode && (
-        <Noise
-          opacity={0.06}
-          blendFunction={BlendFunction.OVERLAY}
-        />
-      )}
+      // Render the scene normally
+      gl.render(scene, camera);
       
-      {/* Removed ChromaticAberration and GodRays effects to improve performance */}
-    </EffectComposer>
-  );
+      // Apply the bloom effect
+      gl.clear(false, true, false);
+      
+      // Manually draw a fullscreen quad with the bloom shader
+      const currentAutoClear = gl.autoClear;
+      gl.autoClear = false;
+      
+      // Restore state
+      gl.autoClear = currentAutoClear;
+    }
+  }, 1); // Lower priority
+  
+  // Nothing to render in the scene
+  return null;
 };
 
 export default PostProcessing;
