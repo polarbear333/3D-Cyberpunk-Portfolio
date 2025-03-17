@@ -4,6 +4,7 @@ import { useHelper, Sky } from '@react-three/drei';
 import * as THREE from 'three';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { KTX2Loader } from 'three/examples/jsm/loaders/KTX2Loader.js';
 import { useStore } from '../../state/useStore';
 
 // Memory-optimized CityScene component with progressive loading
@@ -12,24 +13,10 @@ const CityScene = ({ uniformManager, spatialManager }) => {
   const [cityLoaded, setCityLoaded] = useState(false);
   const [loadingProgress, setLoadingProgress] = useState(0);
   
-  // Track which city chunks have been loaded
-  const [loadedChunks, setLoadedChunks] = useState([]);
-  const maxConcurrentChunks = 3; // Maximum number of chunks to load at once
-  
-  // Define chunk configuration at component level
-  const chunkConfig = useRef([
-    { name: 'center', path: '/models/cybercity/chunks/center.gltf', priority: 1 },
-    { name: 'north', path: '/models/cybercity/chunks/north.gltf', priority: 2 },
-    { name: 'east', path: '/models/cybercity/chunks/east.gltf', priority: 2 },
-    { name: 'south', path: '/models/cybercity/chunks/south.gltf', priority: 2 },
-    { name: 'west', path: '/models/cybercity/chunks/west.gltf', priority: 2 },
-    { name: 'details', path: '/models/cybercity/chunks/details.gltf', priority: 3 }
-  ]);
-  
-  // Emissive materials will be tracked per chunk
-  const emissiveMaterialsRef = useRef({});
-  
-  // Use a simplified scene
+  // Emissive materials will be tracked for animation
+  const emissiveMaterialsRef = useRef([]);
+    
+  // Use a simplified scene based on device capabilities
   const useSimplifiedScene = useRef(
     navigator.deviceMemory ? navigator.deviceMemory < 4 : 
                             navigator.userAgent.includes('Mobile')
@@ -47,7 +34,7 @@ const CityScene = ({ uniformManager, spatialManager }) => {
   useHelper(debugMode && mainLightRef, THREE.DirectionalLightHelper, 5, '#ffffff');
   useHelper(debugMode && spotlightRef, THREE.PointLightHelper, 2, '#ff00ff');
 
-  // Memory usage monitoring
+  // Monitor memory usage
   const trackMemoryUsage = () => {
     if (window.performance && window.performance.memory) {
       const memoryInfo = window.performance.memory;
@@ -203,7 +190,7 @@ const CityScene = ({ uniformManager, spatialManager }) => {
       });
       
       // Store emissive materials
-      emissiveMaterialsRef.current['fallback'] = emissiveMaterials;
+      emissiveMaterialsRef.current = emissiveMaterials;
       
       // Mark as loaded
       setLoading(false);
@@ -219,369 +206,327 @@ const CityScene = ({ uniformManager, spatialManager }) => {
     setLoading(true);
     
     // Check available memory and decide whether to load actual model or fallback
-    if (trackMemoryUsage() > 0.5 || useSimplifiedScene.current) {
+    if (trackMemoryUsage() > 0.7 || useSimplifiedScene.current) {
+      console.warn("Low memory detected, using fallback model");
       loadFallbackModel();
       return;
     }
     
-    // Create loaders
-    const gltfLoader = new GLTFLoader();
-    const dracoLoader = new DRACOLoader();
+    // Create loaders with error handling
+    let gltfLoader;
     
-    // Configure Draco with minimal memory usage
-    dracoLoader.setDecoderPath('/draco/');
-    dracoLoader.setDecoderConfig({ 
-      type: 'js',
-      startDecoderWorkers: false, // Disable workers for memory conservation
-      maxNumWorkers: 1
-    });
-    gltfLoader.setDRACOLoader(dracoLoader);
-    
-    // Check if chunked models exist
-    fetch(chunkConfig.current[0].path)
-      .then(response => {
-        if (!response.ok) {
-          console.log("Chunked models not found, trying single model");
-          loadSingleModel(gltfLoader);
-        } else {
-          console.log("Chunked models found, loading progressively");
-          loadChunkedModels(gltfLoader);
+    try {
+      // Custom onload preprocessor to replace PNG texture paths with KTX2
+      const texturePreprocessor = (gltf) => {
+        // Original model has PNG texture references, but we have KTX2 files
+        if (gltf.parser && gltf.parser.json && gltf.parser.json.images) {
+          console.log("Preprocessing texture paths to use KTX2 format");
+          
+          gltf.parser.json.images.forEach(image => {
+            if (image.uri && image.uri.endsWith('.png')) {
+              // Replace PNG with KTX2
+              image.uri = image.uri.replace('.png', '.ktx2');
+              console.log(`Replaced texture path: ${image.uri}`);
+            }
+          });
         }
-      })
-      .catch(error => {
-        console.error("Error checking for chunked models:", error);
-        loadSingleModel(gltfLoader);
-      });
+        return gltf;
+      };
+      
+      // Create custom GLTFLoader with preprocessor
+      gltfLoader = new GLTFLoader();
+      
+      // Store original parse method
+      const originalParse = gltfLoader.parse;
+      
+      // Override parse method to preprocess textures
+      gltfLoader.parse = function(data, path, onLoad, onError) {
+        return originalParse.call(this, data, path, 
+          gltf => {
+            try {
+              const processedGltf = texturePreprocessor(gltf);
+              onLoad(processedGltf);
+            } catch (error) {
+              console.warn("Error preprocessing model:", error);
+              onLoad(gltf); // Fall back to original
+            }
+          }, 
+          onError
+        );
+      };
+      
+      // Setup KTX2 loader with proper error handling
+      try {
+        const ktx2Loader = new KTX2Loader();
+        ktx2Loader.setTranscoderPath('/basis/');
+        if (renderer) ktx2Loader.detectSupport(renderer);
+        gltfLoader.setKTX2Loader(ktx2Loader);
+        console.log("KTX2 loader configured");
+      } catch (ktx2Error) {
+        console.warn("Failed to configure KTX2 loader:", ktx2Error);
+      }
+      
+      // Try to load Draco decoder if needed
+      try {
+        const dracoLoader = new DRACOLoader();
+        dracoLoader.setDecoderPath('/draco/');
+        dracoLoader.setDecoderConfig({ 
+          type: 'js',
+          startDecoderWorkers: false,
+          maxNumWorkers: 1
+        });
+        gltfLoader.setDRACOLoader(dracoLoader);
+        console.log("Draco decoder configured");
+      } catch (dracoError) {
+        console.warn("Failed to configure Draco loader:", dracoError);
+      }
+      
+      // Load the full model with robust error handling
+      loadFullModel(gltfLoader);
+    } catch (error) {
+      console.error("Critical error setting up model loader:", error);
+      loadFallbackModel();
+    }
   };
   
-  // Load all chunks progressively
-  const loadChunkedModels = (gltfLoader) => {
-    console.log("Chunked models found, loading progressively");
-    // Sort chunks by priority
-    const sortedChunks = [...chunkConfig.current].sort((a, b) => a.priority - b.priority);
+  // Load the whole model as a single file
+  const loadFullModel = (gltfLoader) => {
+    // Try different paths for the model
+    const modelPaths = [
+      '/models/cybercity/scene_compressed.gltf',
+    ];  
     
-    // Start loading highest priority chunks
-    const loadNextChunks = () => {
-      // Find chunks that haven't been loaded yet
-      const remainingChunks = sortedChunks.filter(
-        chunk => !loadedChunks.includes(chunk.name)
-      );
+    let currentPathIndex = 0;
+    
+    // Create texture error handler to suppress texture loading errors
+    const textureErrorHandler = (err) => {
+      // Just silently ignore texture loading errors
+      // console.warn("Texture loading issue (suppressed):", err);
+      return;
+    };
+    
+    // Replace default texture loading error handler in THREE.js
+    THREE.TextureLoader.prototype.loadAsync = function(url, onProgress) {
+      const loader = this;
+      return new Promise((resolve, reject) => {
+        loader.load(url, resolve, onProgress, textureErrorHandler);
+      });
+    };
+    
+    // Create material that doesn't depend on missing textures
+    const createFallbackMaterial = (materialType, materialName) => {
+      if (materialName.toLowerCase().includes('neon') || 
+          materialName.toLowerCase().includes('light') ||
+          materialName.toLowerCase().includes('glow') ||
+          materialName.toLowerCase().includes('emit')) {
+        // Emissive material for neons and lights
+        const color = new THREE.Color();
+        
+        // Choose color based on name
+        if (materialName.toLowerCase().includes('red')) {
+          color.set('#FF0000');
+        } else if (materialName.toLowerCase().includes('blue')) {
+          color.set('#00FFFF');
+        } else if (materialName.toLowerCase().includes('green')) {
+          color.set('#00FF00');
+        } else if (materialName.toLowerCase().includes('purple') || 
+                  materialName.toLowerCase().includes('pink')) {
+          color.set('#FF00FF');
+        } else if (materialName.toLowerCase().includes('yellow') || 
+                  materialName.toLowerCase().includes('orange')) {
+          color.set('#FFFF00');
+        } else {
+          color.set('#00FFFF'); // Default cyan
+        }
+        
+        return new THREE.MeshStandardMaterial({
+          color: color,
+          emissive: color,
+          emissiveIntensity: 1.0,
+          metalness: 0.8,
+          roughness: 0.2
+        });
+      }
       
-      if (remainingChunks.length === 0) {
-        console.log("All chunks loaded!");
-        setLoading(false);
-        setCityLoaded(true);
+      // Standard materials
+      if (materialName.toLowerCase().includes('glass')) {
+        return new THREE.MeshPhysicalMaterial({
+          color: '#AACCFF',
+          metalness: 0.9,
+          roughness: 0.1,
+          transparent: true,
+          opacity: 0.6
+        });
+      }
+      
+      if (materialName.toLowerCase().includes('metal')) {
+        return new THREE.MeshStandardMaterial({
+          color: '#888888',
+          metalness: 0.9,
+          roughness: 0.3
+        });
+      }
+      
+      // Default material
+      return new THREE.MeshStandardMaterial({
+        color: '#AAAAAA',
+        metalness: 0.4,
+        roughness: 0.6
+      });
+    };
+    
+    // Process model materials to handle missing textures
+    const processMaterials = (gltf) => {
+      gltf.scene.traverse((node) => {
+        if (node.isMesh && node.material) {
+          try {
+            // Handle array of materials
+            if (Array.isArray(node.material)) {
+              for (let i = 0; i < node.material.length; i++) {
+                const mat = node.material[i];
+                if (mat.map === null && mat.name) {
+                  // Replace material that would have texture errors
+                  node.material[i] = createFallbackMaterial(mat.type, mat.name);
+                }
+              }
+            } else {
+              // Handle single material
+              const mat = node.material;
+              if (mat.map === null && mat.name) {
+                // Replace material that would have texture errors
+                node.material = createFallbackMaterial(mat.type, mat.name);
+              }
+            }
+          } catch (err) {
+            console.warn("Error processing materials:", err);
+          }
+        }
+      });
+      
+      return gltf;
+    };
+    
+    const tryLoadModel = () => {
+      if (currentPathIndex >= modelPaths.length) {
+        console.error("All model paths failed, loading fallback model");
+        loadFallbackModel();
         return;
       }
       
-      // Take the next batch of chunks to load
-      const chunksToLoad = remainingChunks.slice(0, maxConcurrentChunks);
+      const modelPath = modelPaths[currentPathIndex];
+      console.log(`Trying to load model from: ${modelPath}`);
       
-      // Load each chunk
-      Promise.all(chunksToLoad.map(chunk => loadChunk(gltfLoader, chunk)))
-        .then(() => {
-          // Update loaded chunks
-          setLoadedChunks(prev => [...prev, ...chunksToLoad.map(c => c.name)]);
-          
-          // Check memory and continue if safe
-          if (trackMemoryUsage() < 0.8) {
-            // Wait a moment for garbage collection before loading more chunks
-            setTimeout(loadNextChunks, 500);
-          } else {
-            console.warn("Memory usage too high, stopping chunk loading");
-            setLoading(false);
-            setCityLoaded(true);
-          }
-        })
-        .catch(error => {
-          console.error("Error loading chunks:", error);
-          setLoading(false);
-          
-          // If central chunk failed, try fallback
-          if (loadedChunks.length === 0) {
-            loadFallbackModel();
-          } else {
-            // Otherwise, consider it done with what we have
-            setCityLoaded(true);
-          }
-        });
-    };
-    
-    // Start loading process
-    loadNextChunks();
-  };
-  
-  // Load a single chunk
-  const loadChunk = (gltfLoader, chunk) => {
-    return new Promise((resolve, reject) => {
-      console.log(`Loading chunk: ${chunk.name}`);
-      
+      // Load the model with minimal memory usage and custom error handling
       gltfLoader.load(
-        chunk.path,
+        modelPath,
         (gltf) => {
           try {
-            // Optimize the chunk
-            const optimizedModel = optimizeChunk(gltf.scene, chunk.name);
+            console.log("Model loaded successfully!");
+            
+            // Process materials to handle missing textures
+            processMaterials(gltf);
+            
+            // Optimize model aggressively for lower memory usage
+            const model = optimizeModel(gltf.scene);
+            
+            // Use a much smaller scale if needed (adjust based on model size)
+            model.scale.set(1, 1, 1); // Start with no scaling
             
             // Add to scene
             if (cityRef.current) {
-              cityRef.current.add(optimizedModel);
-              console.log(`Chunk ${chunk.name} added to scene`);
+              cityRef.current.add(model);
+              console.log("Model added to scene");
               
-              // Calculate bounds if this is the first chunk
-              if (loadedChunks.length === 0) {
-                const boundingBox = new THREE.Box3().setFromObject(optimizedModel);
-                const size = new THREE.Vector3();
-                boundingBox.getSize(size);
+              // Calculate bounds
+              const boundingBox = new THREE.Box3().setFromObject(model);
+              const size = new THREE.Vector3();
+              boundingBox.getSize(size);
+              
+              // Adjust scale if the model is too large
+              if (size.length() > 1000) {
+                const scale = 0.01;
+                model.scale.set(scale, scale, scale);
+                console.log(`Model was too large, rescaling to ${scale}`);
                 
-                // Set initial bounds, will be expanded as more chunks load
-                setCityBounds({
-                  min: boundingBox.min,
-                  max: boundingBox.max,
-                  size: size
-                });
-              } else if (cityRef.current.children.length > 1) {
-                // Update bounds to include all loaded chunks
-                const boundingBox = new THREE.Box3().setFromObject(cityRef.current);
-                const size = new THREE.Vector3();
+                // Recalculate bounds after scaling
+                boundingBox.setFromObject(model);
                 boundingBox.getSize(size);
-                
-                setCityBounds({
-                  min: boundingBox.min,
-                  max: boundingBox.max,
-                  size: size
-                });
               }
               
-              // Update progress based on how many chunks we've loaded
-              setLoadingProgress((loadedChunks.length + 1) / chunkConfig.current.length);
+              setCityBounds({
+                min: boundingBox.min,
+                max: boundingBox.max,
+                size: size
+              });
               
-              resolve();
-            } else {
-              reject(new Error("City ref not available"));
+              // Mark as loaded
+              setCityLoaded(true);
+              setLoading(false);
             }
           } catch (error) {
-            console.error(`Error processing chunk ${chunk.name}:`, error);
-            reject(error);
+            console.error("Error processing model:", error);
+            // Try next path
+            currentPathIndex++;
+            tryLoadModel();
           }
         },
         (progress) => {
-          // Update loading progress for this specific chunk
           if (progress.total > 0) {
-            const chunkProgress = progress.loaded / progress.total;
-            // Weight the progress by the number of chunks
-            const overallProgress = (loadedChunks.length + chunkProgress) / chunkConfig.current.length;
-            setLoadingProgress(overallProgress);
+            const percent = (progress.loaded / progress.total);
+            setLoadingProgress(percent);
           }
         },
         (error) => {
-          console.error(`Error loading chunk ${chunk.name}:`, error);
-          reject(error);
+          console.error(`Error loading model from ${modelPath}:`, error);
+          // Try next path
+          currentPathIndex++;
+          tryLoadModel();
         }
       );
-    });
-  };
-  
-  // Load the whole model as a single file if chunks aren't available
-  const loadSingleModel = (gltfLoader) => {
-    // Try compressed version first, then fallback
-    fetch('/models/cybercity/scene_compressed.gltf')
-      .then(response => {
-        const modelPath = response.ok ? 
-          '/models/cybercity/scene_compressed.gltf' : 
-          '/models/cybercity/scene.gltf';
-        
-        console.log(`Loading single model from: ${modelPath}`);
-        
-        // Load the model with minimal memory usage
-        gltfLoader.load(
-          modelPath,
-          (gltf) => {
-            try {
-              console.log("Model loaded successfully!");
-              
-              // Optimize model aggressively for lower memory usage
-              const model = optimizeModel(gltf.scene);
-              
-              // Use a much smaller scale
-              model.scale.set(0.03, 0.03, 0.03);
-              
-              // Add to scene
-              if (cityRef.current) {
-                cityRef.current.add(model);
-                console.log("Model added to scene");
-                
-                // Calculate bounds
-                const boundingBox = new THREE.Box3().setFromObject(model);
-                const size = new THREE.Vector3();
-                boundingBox.getSize(size);
-                
-                setCityBounds({
-                  min: boundingBox.min,
-                  max: boundingBox.max,
-                  size: size
-                });
-                
-                // Mark as loaded
-                setCityLoaded(true);
-                setLoading(false);
-              }
-            } catch (error) {
-              console.error("Error processing model:", error);
-              loadFallbackModel();
-            }
-          },
-          (progress) => {
-            if (progress.total > 0) {
-              const percent = (progress.loaded / progress.total);
-              setLoadingProgress(percent);
-            }
-          },
-          (error) => {
-            console.error("Error loading model:", error);
-            loadFallbackModel();
-          }
-        );
-      })
-      .catch(error => {
-        console.error("Failed to check for model:", error);
-        loadFallbackModel();
-      });
-  };
+    };
+    
+    // Start loading attempt
+    tryLoadModel();
+  }
   
   // Super-aggressive model optimization for memory savings
   const optimizeModel = (model) => {
     console.log("Applying aggressive memory optimization to model");
     
-    // Track what we collect for animation
-    const emissiveMaterials = [];
-    let meshCount = 0;
-    let materialCount = 0;
-    let geometryCount = 0;
-    
-    // Create shared geometries for similar objects to reduce memory
-    const geometryCache = new Map();
-    const materialCache = new Map();
-    
-    // Material merging function - creates simpler materials
-    const simplifyMaterial = (material) => {
-      if (!material) return null;
+    try {
+      // Track what we collect for animation
+      const emissiveMaterials = [];
+      let meshCount = 0;
+      let materialCount = 0;
+      let geometryCount = 0;
       
-      // Skip if already in cache
-      const matKey = material.uuid;
-      if (materialCache.has(matKey)) {
-        return materialCache.get(matKey);
-      }
+      // Create shared geometries for similar objects to reduce memory
+      const geometryCache = new Map();
+      const materialCache = new Map();
       
-      materialCount++;
+      // Safe object traversal
+      const safeTraverse = (node) => {
+        if (!node) return;
+        
+        try {
+          // Process this node if it's a mesh
+          if (node.isMesh) {
+            processMesh(node);
+          }
+          
+          // Process children if any
+          if (node.children && node.children.length > 0) {
+            for (let i = 0; i < node.children.length; i++) {
+              safeTraverse(node.children[i]);
+            }
+          }
+        } catch (error) {
+          console.warn("Error processing node:", error);
+        }
+      };
       
-      try {
-        let simplified = null;
-        
-        // Check if it has emissive properties (only valid for MeshStandardMaterial)
-        const hasEmissive = material.type === 'MeshStandardMaterial' && 
-                         material.emissive && 
-                         (material.emissiveIntensity > 0 || 
-                          material.emissive.r > 0 || 
-                          material.emissive.g > 0 || 
-                          material.emissive.b > 0);
-        
-        if (hasEmissive) {
-          // Create a simpler material but preserve emissive
-          simplified = new THREE.MeshStandardMaterial({
-            color: material.color || new THREE.Color(0xcccccc),
-            emissive: material.emissive,
-            emissiveIntensity: material.emissiveIntensity || 1.0,
-            transparent: material.transparent || false,
-            opacity: material.opacity || 1.0,
-            side: material.side || THREE.FrontSide,
-            flatShading: true, // Use flat shading for better performance
-          });
-        } else {
-          // Even simpler material for non-emissive objects
-          simplified = new THREE.MeshLambertMaterial({
-            color: material.color || new THREE.Color(0xcccccc),
-            transparent: material.transparent || false,
-            opacity: material.opacity || 1.0,
-            side: material.side || THREE.FrontSide,
-          });
-        }
-        
-        // Don't use any textures for memory efficiency
-        
-        // Cache the material
-        materialCache.set(matKey, simplified);
-        return simplified;
-      } catch (error) {
-        console.warn("Error simplifying material:", error);
-        // Return a basic material as fallback
-        const fallback = new THREE.MeshBasicMaterial({ color: 0xcccccc });
-        materialCache.set(matKey, fallback);
-        return fallback;
-      }
-    };
-    
-    // Simplify geometry - reduce detail and memory usage
-    const simplifyGeometry = (geometry) => {
-      if (!geometry) return null;
-      
-      try {
-        // Create a hash of the geometry based on vertex count and bounds
-        const vertexCount = geometry.attributes.position.count;
-        const bounds = geometry.boundingBox || new THREE.Box3().setFromBufferAttribute(geometry.attributes.position);
-        const size = new THREE.Vector3();
-        bounds.getSize(size);
-        const hash = `${vertexCount}_${size.x.toFixed(1)}_${size.y.toFixed(1)}_${size.z.toFixed(1)}`;
-        
-        // Check if we have a similar geometry already
-        if (geometryCache.has(hash)) {
-          return geometryCache.get(hash);
-        }
-        
-        geometryCount++;
-        
-        // Create a simplified version with fewer attributes
-        const simplified = new THREE.BufferGeometry();
-        
-        // Only copy essential attributes
-        if (geometry.attributes.position) {
-          simplified.setAttribute('position', geometry.attributes.position);
-        }
-        if (geometry.attributes.normal) {
-          simplified.setAttribute('normal', geometry.attributes.normal);
-        }
-        
-        // Skip uv, color, and other attributes to save memory
-        
-        // Copy indices if present
-        if (geometry.index) {
-          simplified.setIndex(geometry.index);
-        }
-        
-        // Set bounding sphere and box
-        if (geometry.boundingSphere) {
-          simplified.boundingSphere = geometry.boundingSphere.clone();
-        } else {
-          simplified.computeBoundingSphere();
-        }
-        if (geometry.boundingBox) {
-          simplified.boundingBox = geometry.boundingBox.clone();
-        } else {
-          simplified.computeBoundingBox();
-        }
-        
-        // Cache for reuse
-        geometryCache.set(hash, simplified);
-        return simplified;
-      } catch (error) {
-        console.warn("Error simplifying geometry:", error);
-        return geometry; // Return original if simplification fails
-      }
-    };
-    
-    // Process the model
-    model.traverse((node) => {
-      if (node.isMesh) {
+      // Process individual mesh
+      const processMesh = (node) => {
         meshCount++;
         
         // Skip tiny meshes for memory efficiency
@@ -593,79 +538,187 @@ const CityScene = ({ uniformManager, spatialManager }) => {
         
         // Simplify geometry and material
         if (node.geometry) {
-          node.geometry = simplifyGeometry(node.geometry);
+          try {
+            node.geometry = simplifyGeometry(node.geometry);
+          } catch (error) {
+            console.warn("Error simplifying geometry for node:", error);
+          }
         }
         
         if (node.material) {
-          const originalMaterial = node.material;
-          
-          // Handle array of materials
-          if (Array.isArray(originalMaterial)) {
-            node.material = originalMaterial.map(mat => simplifyMaterial(mat));
-          } else {
-            node.material = simplifyMaterial(originalMaterial);
-          }
-          
-          // Track emissive materials - but check if it's a standard material first
-          if (!Array.isArray(node.material) && 
-              node.material.type === 'MeshStandardMaterial' && 
-              node.material.emissive) {
-            emissiveMaterials.push({
-              material: node.material,
-              position: node.position.clone()
-            });
+          try {
+            const originalMaterial = node.material;
+            
+            // Handle array of materials
+            if (Array.isArray(originalMaterial)) {
+              node.material = originalMaterial.map(mat => {
+                try {
+                  return simplifyMaterial(mat);
+                } catch (error) {
+                  console.warn("Error simplifying array material:", error);
+                  return new THREE.MeshBasicMaterial({ color: 0xcccccc });
+                }
+              });
+            } else {
+              node.material = simplifyMaterial(originalMaterial);
+            }
+            
+            // Track emissive materials - but check if it's a standard material first
+            if (!Array.isArray(node.material) && 
+                node.material.type === 'MeshStandardMaterial' && 
+                node.material.emissive) {
+              emissiveMaterials.push({
+                material: node.material,
+                position: node.position.clone()
+              });
+            }
+          } catch (error) {
+            console.warn("Error processing material:", error);
+            // Fallback to simple material
+            node.material = new THREE.MeshBasicMaterial({ color: 0xcccccc });
           }
         }
         
         // Only enable shadows for large, important objects
-        const isImportant = node.geometry && node.geometry.boundingSphere && 
-                          node.geometry.boundingSphere.radius > 5;
+        try {
+          const isImportant = node.geometry && node.geometry.boundingSphere && 
+                            node.geometry.boundingSphere.radius > 5;
+          
+          node.castShadow = isImportant;
+          node.receiveShadow = isImportant;
+          
+          // Enable frustum culling for all objects
+          node.frustumCulled = true;
+        } catch (error) {
+          console.warn("Error setting shadow properties:", error);
+        }
+      };
+      
+      // Material merging function - creates simpler materials
+      const simplifyMaterial = (material) => {
+        if (!material) return new THREE.MeshBasicMaterial({ color: 0xcccccc });
         
-        node.castShadow = isImportant;
-        node.receiveShadow = isImportant;
+        // Skip if already in cache
+        const matKey = material.uuid;
+        if (materialCache.has(matKey)) {
+          return materialCache.get(matKey);
+        }
         
-        // Enable frustum culling for all objects
-        node.frustumCulled = true;
-      }
-    });
-    
-    // Clean caches to free memory
-    geometryCache.clear();
-    materialCache.clear();
-    
-    // Store emissive materials for animation
-    emissiveMaterialsRef.current['model'] = emissiveMaterials;
-    
-    console.log(`Optimized model: ${meshCount} meshes, ${materialCount} materials, ${geometryCount} geometries, ${emissiveMaterials.length} emissive materials`);
-    
-    return model;
-  };
-  
-  // Optimize a single chunk
-  const optimizeChunk = (chunk, chunkName) => {
-    console.log(`Optimizing chunk: ${chunkName}`);
-    
-    // Collect emissive materials for this chunk
-    const chunkEmissiveMaterials = [];
-    
-    // Apply same optimization but track per chunk
-    const optimized = optimizeModel(chunk);
-    
-    // Find emissive materials in this chunk
-    optimized.traverse((node) => {
-      if (node.isMesh && node.material && !Array.isArray(node.material) && 
-          node.material.type === 'MeshStandardMaterial' && node.material.emissive) {
-        chunkEmissiveMaterials.push({
-          material: node.material,
-          position: node.position.clone()
-        });
-      }
-    });
-    
-    // Store emissive materials for this chunk
-    emissiveMaterialsRef.current[chunkName] = chunkEmissiveMaterials;
-    
-    return optimized;
+        materialCount++;
+        
+        try {
+          let simplified = null;
+          
+          // Check if it has emissive properties (only valid for MeshStandardMaterial)
+          const hasEmissive = material.type === 'MeshStandardMaterial' && 
+                          material.emissive && 
+                          (material.emissiveIntensity > 0 || 
+                            material.emissive.r > 0 || 
+                            material.emissive.g > 0 || 
+                            material.emissive.b > 0);
+          
+          if (hasEmissive) {
+            // Create a simpler material but preserve emissive
+            simplified = new THREE.MeshStandardMaterial({
+              color: material.color || new THREE.Color(0xcccccc),
+              emissive: material.emissive,
+              emissiveIntensity: material.emissiveIntensity || 1.0,
+              transparent: material.transparent || false,
+              opacity: material.opacity || 1.0,
+              side: material.side || THREE.FrontSide,
+              flatShading: true, // Use flat shading for better performance
+            });
+          } else {
+            // Even simpler material for non-emissive objects
+            simplified = new THREE.MeshLambertMaterial({
+              color: material.color || new THREE.Color(0xcccccc),
+              transparent: material.transparent || false,
+              opacity: material.opacity || 1.0,
+              side: material.side || THREE.FrontSide,
+            });
+          }
+          
+          // Cache the material
+          materialCache.set(matKey, simplified);
+          return simplified;
+        } catch (error) {
+          console.warn("Error simplifying material:", error);
+          // Return a basic material as fallback
+          const fallback = new THREE.MeshBasicMaterial({ color: 0xcccccc });
+          materialCache.set(matKey, fallback);
+          return fallback;
+        }
+      };
+      
+      // Simplify geometry - reduce detail and memory usage
+      const simplifyGeometry = (geometry) => {
+        if (!geometry) return new THREE.BufferGeometry();
+        
+        try {
+          // Skip processing if no position attribute
+          if (!geometry.attributes || !geometry.attributes.position) {
+            return geometry;
+          }
+          
+          // Create a hash of the geometry based on vertex count
+          const vertexCount = geometry.attributes.position.count;
+          const hash = `${vertexCount}`;
+          
+          // Check if we have a similar geometry already
+          if (geometryCache.has(hash)) {
+            return geometryCache.get(hash);
+          }
+          
+          geometryCount++;
+          
+          // Create a simplified version with fewer attributes
+          const simplified = new THREE.BufferGeometry();
+          
+          // Only copy essential attributes
+          if (geometry.attributes.position) {
+            simplified.setAttribute('position', geometry.attributes.position);
+          }
+          if (geometry.attributes.normal) {
+            simplified.setAttribute('normal', geometry.attributes.normal);
+          }
+          
+          // Skip uv, color, and other attributes to save memory
+          
+          // Copy indices if present
+          if (geometry.index) {
+            simplified.setIndex(geometry.index);
+          }
+          
+          // Compute bounds if needed
+          simplified.computeBoundingSphere();
+          simplified.computeBoundingBox();
+          
+          // Cache for reuse
+          geometryCache.set(hash, simplified);
+          return simplified;
+        } catch (error) {
+          console.warn("Error simplifying geometry:", error);
+          return geometry; // Return original if simplification fails
+        }
+      };
+      
+      // Process the model using safe traversal
+      safeTraverse(model);
+      
+      // Clean caches to free memory
+      geometryCache.clear();
+      materialCache.clear();
+      
+      // Store emissive materials for animation
+      emissiveMaterialsRef.current = emissiveMaterials;
+      
+      console.log(`Optimized model: ${meshCount} meshes, ${materialCount} materials, ${geometryCount} geometries, ${emissiveMaterials.length} emissive materials`);
+      
+      return model;
+    } catch (error) {
+      console.error("Fatal error during model optimization:", error);
+      return model; // Return unmodified model on error
+    }
   };
   
   // Start loading the model when component mounts
@@ -681,24 +734,15 @@ const CityScene = ({ uniformManager, spatialManager }) => {
     if (Math.floor(clock.getElapsedTime() * 10) % 6 !== 0) return;
     
     // Get all emissive materials
-    const allEmissiveMaterials = [];
-    
-    // Only animate materials from loaded chunks
-    Object.keys(emissiveMaterialsRef.current).forEach(chunkName => {
-      if (chunkName === 'fallback' || loadedChunks.includes(chunkName) || chunkName === 'model') {
-        if (emissiveMaterialsRef.current[chunkName]) {
-          allEmissiveMaterials.push(...emissiveMaterialsRef.current[chunkName]);
-        }
-      }
-    });
+    const emissiveMaterials = emissiveMaterialsRef.current;
     
     // Skip if no materials to animate
-    if (allEmissiveMaterials.length === 0) return;
+    if (!emissiveMaterials || emissiveMaterials.length === 0) return;
     
     // Efficiently animate in batches
     const time = clock.getElapsedTime();
     const batchSize = 50; // Process 50 materials at a time
-    const totalMaterials = allEmissiveMaterials.length;
+    const totalMaterials = emissiveMaterials.length;
     
     // Only process one batch per frame
     const batchIndex = Math.floor(time) % Math.ceil(totalMaterials / batchSize);
@@ -706,7 +750,7 @@ const CityScene = ({ uniformManager, spatialManager }) => {
     const endIndex = Math.min(startIndex + batchSize, totalMaterials);
     
     for (let i = startIndex; i < endIndex; i++) {
-      const item = allEmissiveMaterials[i];
+      const item = emissiveMaterials[i];
       if (item && item.material && item.position) {
         const pulse = Math.sin(time + item.position.x * 0.05) * 0.3 + 0.7;
         item.material.emissiveIntensity = pulse;
