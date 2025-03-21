@@ -1,7 +1,7 @@
 import React, { Suspense, useEffect, useState, useRef } from 'react';
-import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { OrbitControls, Loader } from '@react-three/drei';
-import * as THREE from 'three'; // Add missing THREE import
+import { Canvas } from '@react-three/fiber';
+import { Loader } from '@react-three/drei';
+import * as THREE from 'three';
 import { useStore } from './state/useStore';
 import useAudio from './hooks/useAudio';
 import LoadingScreen from './components/UI/LoadingScreen';
@@ -12,29 +12,9 @@ import HotspotManager from './components/Hotspots/HotspotManager';
 import DebugInfo, { CameraTracker } from './components/UI/DebugInfo';
 import StatsPanel from './components/UI/StatsPanel';
 
-// Custom component to handle optimized render loop
-function RenderLoop({ customRender }) {
-  const state = useThree();
-  
-  useFrame(() => {
-    // Call our custom render function
-    customRender(state);
-    // Request another frame
-    state.invalidate();
-  });
-  
-  return null;
-}
-
 function App() {
   const { isLoading, debugMode, setLoading, soundEnabled } = useStore();
   const [audioInitialized, setAudioInitialized] = useState(false);
-  
-  // Low memory mode
-  const lowMemoryMode = useRef(
-    navigator.deviceMemory ? navigator.deviceMemory < 4 : 
-                          navigator.userAgent.includes('Mobile')
-  );
   
   // References
   const canvasRef = useRef(null);
@@ -122,76 +102,24 @@ function App() {
     }
   }, [soundEnabled, audioInitialized]);
 
-  // Initialize renderer with memory-optimized settings
+  // Initialize renderer
   const initRenderer = (state) => {
     if (!rendererRef.current && state.gl) {
       rendererRef.current = state.gl;
       
-      // Configure renderer for memory efficiency
-      rendererRef.current.setClearColor(0x000000);
-      
-      // Lower precision for better performance
-      rendererRef.current.outputEncoding = THREE.LinearEncoding; // Using THREE from import
-      
-      // Reduce shadow map size
-      rendererRef.current.shadowMap.type = THREE.BasicShadowMap; // Using THREE from import
+      // Configure renderer
+      rendererRef.current.setClearColor(0x0a0a1a); // Darker blue background
+      rendererRef.current.outputEncoding = THREE.sRGBEncoding;
+      rendererRef.current.toneMapping = THREE.ReinhardToneMapping;
+      rendererRef.current.toneMappingExposure = 2.5;
+      rendererRef.current.shadowMap.enabled = true;
       
       // Expose renderer for debugging
       window.renderer = rendererRef.current;
       
-      console.log("Renderer configured for memory efficiency");
+      console.log("Renderer configured");
     }
   };
-  
-  // Basic render loop that just renders the scene
-  const basicRenderLoop = (state) => {
-    // Initialize renderer if needed
-    if (!rendererRef.current) {
-      initRenderer(state);
-    }
-    
-    // Simple render that just renders the scene directly
-    state.gl.render(state.scene, state.camera);
-  };
-
-  // Handle memory issues
-  useEffect(() => {
-    // Function to detect low memory conditions
-    const checkMemory = () => {
-      // Check if performance.memory is available (Chrome only)
-      if (window.performance && window.performance.memory) {
-        const memoryInfo = window.performance.memory;
-        const usedJSHeapSize = memoryInfo.usedJSHeapSize;
-        const jsHeapSizeLimit = memoryInfo.jsHeapSizeLimit;
-        const memoryUsage = usedJSHeapSize / jsHeapSizeLimit;
-        
-        // If memory usage is over 80%, enable low memory mode
-        if (memoryUsage > 0.8) {
-          console.warn("High memory usage detected, enabling low memory mode");
-          lowMemoryMode.current = true;
-          
-          // Force a garbage collection if possible
-          if (window.gc) {
-            try {
-              window.gc();
-            } catch (e) {
-              console.warn("Failed to force garbage collection");
-            }
-          }
-        }
-        
-        return memoryUsage;
-      }
-      return null;
-    };
-    
-    // Check memory periodically
-    const memoryCheckInterval = setInterval(checkMemory, 10000);
-    
-    return () => {
-      clearInterval(memoryCheckInterval);
-    };
-  }, []);
 
   // Handle window resize
   useEffect(() => {
@@ -214,27 +142,6 @@ function App() {
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
-  
-  // Emergency memory cleanup
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (document.hidden) {
-        // Page is hidden, clean up resources
-        if (window.gc) {
-          try {
-            window.gc();
-          } catch (e) {
-            console.warn("Failed to force garbage collection");
-          }
-        }
-      }
-    };
-    
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
-  }, []);
 
   return (
     <div className="w-screen h-screen bg-slate-900 overflow-hidden">
@@ -243,30 +150,20 @@ function App() {
       <Canvas
         ref={canvasRef}
         gl={{ 
-          antialias: false, // Disable antialiasing for performance
-          alpha: false,
-          powerPreference: "default", // Use default instead of high-performance
-          stencil: false,
-          depth: true,
-          precision: "lowp", // Use low precision for better performance
+          antialias: true,
+          alpha: true,
+          preserveDrawingBuffer: true
         }}
-        dpr={lowMemoryMode.current ? 1 : (window.devicePixelRatio > 2 ? 2 : window.devicePixelRatio)}
-        // Set initial camera position for the angled perspective view
+        dpr={window.devicePixelRatio}
         camera={{
-          position: [-30, 50, -30],
-          fov: 45,
-          near: 1, // Increased near plane for better depth precision
-          far: 1000 // Reduced far plane
+          fov: 60,
+          near: 0.1,
+          far: 2000
         }}
-        // Use simple render loop
-        frameloop="never"
         onCreated={initRenderer}
-        shadows={false} // Disable shadows in low memory mode
+        shadows
       >
         <Suspense fallback={null}>
-          {/* Add a render loop component */}
-          <RenderLoop customRender={basicRenderLoop} />
-          
           {/* Main 3D scene */}
           <CityScene />
           
@@ -279,12 +176,9 @@ function App() {
           {/* Camera position tracker for debug info */}
           <CameraTracker />
         </Suspense>
-        
-        {/* Only enable OrbitControls in debug mode */}
-        {debugMode && <OrbitControls enablePan={true} enableZoom={true} enableRotate={true} />}
       </Canvas>
       
-      {/* Simplified loading indicator */}
+      {/* Loading indicator */}
       <Loader 
         dataInterpolation={(p) => `Loading ${p.toFixed(0)}%`}
         containerStyles={{
@@ -305,11 +199,11 @@ function App() {
       {/* 2D UI overlay */}
       <Interface audio={audio} />
       
-      {/* Debug Info - simplified in low memory mode */}
-      {debugMode && <DebugInfo lowMemoryMode={lowMemoryMode.current} />}
+      {/* Debug Info */}
+      {debugMode && <DebugInfo />}
       
-      {/* Only show stats in debug mode and not in low memory mode */}
-      {debugMode && !lowMemoryMode.current && <StatsPanel mode={0} position="top-left" />}
+      {/* Only show stats in debug mode */}
+      {debugMode && <StatsPanel mode={0} position="top-left" />}
     </div>
   );
 }

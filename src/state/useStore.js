@@ -1,28 +1,16 @@
 import create from 'zustand';
-import { Vector3, Euler, Box3 } from 'three';
+import { Vector3, Box3 } from 'three';
 
 const useStore = create((set, get) => ({
   // Application state
   isLoading: true,
   debugMode: true, // Set to true for development
   
-  // Navigation and camera
+  // Drone position (simplified from main.js approach)
   dronePosition: new Vector3(0, 15, 0),
-  droneRotation: new Euler(0, 0, 0), // Changed to Euler for proper rotation
-  droneVelocity: new Vector3(0, 0, 0),
-  
-  // Navigation settings
-  droneSpeed: 1.0,
-  droneAcceleration: 0.05,
-  droneTurnSpeed: 0.02,
-  
-  // Target navigation
-  targetPosition: null,
-  isMovingToTarget: false,
   
   // City and collision boundaries
   cityBounds: null,  // Will be set when the city model loads
-  collisionObjects: [], // Object meshes to check for collision
   
   // UI state
   activeHotspotId: null,
@@ -39,31 +27,17 @@ const useStore = create((set, get) => ({
   setLoading: (isLoading) => set({ isLoading }),
   toggleDebugMode: () => set((state) => ({ debugMode: !state.debugMode })),
   
+  // Simplified drone position update
   updateDronePosition: (position) => set({ dronePosition: position }),
-  updateDroneRotation: (rotation) => set({ droneRotation: rotation }),
-  updateDroneVelocity: (velocity) => set({ droneVelocity: velocity }),
-  
-  // Set target position for drone to move to
-  setTargetPosition: (position) => set({ 
-    targetPosition: position,
-    isMovingToTarget: position !== null
-  }),
-  
-  // Clear target position
-  clearTargetPosition: () => set({ 
-    targetPosition: null,
-    isMovingToTarget: false 
-  }),
   
   setCityBounds: (bounds) => set({ cityBounds: bounds }),
-  addCollisionObject: (object) => set((state) => ({ 
-    collisionObjects: [...state.collisionObjects, object] 
-  })),
   
+  // UI actions
   setActiveHotspot: (id) => set({ activeHotspotId: id }),
   showOverlay: (content) => set({ isOverlayVisible: true, overlayContent: content }),
   hideOverlay: () => set({ isOverlayVisible: false }),
   
+  // Audio controls
   toggleSound: () => set((state) => ({ soundEnabled: !state.soundEnabled })),
   
   // Check if a position is inside city bounds
@@ -96,26 +70,6 @@ const useStore = create((set, get) => ({
       console.error('Failed to load projects', error);
     }
   },
-  
-  // Navigate to a specific hotspot
-  navigateToHotspot: (hotspotId) => {
-    const { projects } = get();
-    
-    // Find the project by ID
-    const project = projects.find(p => p.id === hotspotId);
-    
-    if (project && project.position) {
-      // Set target position for navigation
-      set({ 
-        targetPosition: new Vector3(...project.position),
-        isMovingToTarget: true,
-        activeHotspotId: hotspotId
-      });
-      return true;
-    }
-    
-    return false;
-  }
 }));
 
 export { useStore };

@@ -3,21 +3,16 @@ import { useFrame, useThree } from '@react-three/fiber';
 import { useStore } from '../../state/useStore';
 
 // This component will be rendered outside the Canvas
-const DebugInfo = ({ renderManager, spatialManager, uniformManager }) => {
-  const { debugMode, dronePosition, droneVelocity } = useStore();
+const DebugInfo = () => {
+  const { debugMode, dronePosition } = useStore();
   const [info, setInfo] = useState({
     fps: 0,
     dronePos: [0, 0, 0],
-    droneVel: [0, 0, 0],
     drawCalls: 0,
     triangles: 0,
     textures: 0,
     geometries: 0,
-    culledObjects: 0,
-    visibleObjects: 0,
-    uniformUpdates: 0,
-    skipRatio: 0,
-    resolutionScale: 1.0
+    cameraPos: [0, 0, 0]
   });
   
   // FPS calculation
@@ -26,21 +21,18 @@ const DebugInfo = ({ renderManager, spatialManager, uniformManager }) => {
   
   // Update info from store values
   useEffect(() => {
-    // Update state info with values from the store
-    setInfo(prev => ({
-      ...prev,
-      dronePos: [
-        Math.round(dronePosition.x * 10) / 10,
-        Math.round(dronePosition.y * 10) / 10,
-        Math.round(dronePosition.z * 10) / 10
-      ],
-      droneVel: [
-        Math.round(droneVelocity.x * 100) / 100,
-        Math.round(droneVelocity.y * 100) / 100,
-        Math.round(droneVelocity.z * 100) / 100
-      ],
-    }));
-  }, [dronePosition, droneVelocity]);
+    // Safely update drone position, checking for undefined values
+    if (dronePosition && typeof dronePosition.x === 'number') {
+      setInfo(prev => ({
+        ...prev,
+        dronePos: [
+          Math.round(dronePosition.x * 10) / 10,
+          Math.round(dronePosition.y * 10) / 10,
+          Math.round(dronePosition.z * 10) / 10
+        ]
+      }));
+    }
+  }, [dronePosition]);
 
   // Calculate FPS and gather performance metrics
   useEffect(() => {
@@ -74,41 +66,13 @@ const DebugInfo = ({ renderManager, spatialManager, uniformManager }) => {
           console.warn("Could not get renderer info");
         }
         
-        // Get optimization manager info if available
-        let culledObjects = 0;
-        let visibleObjects = 0;
-        let uniformUpdates = 0;
-        let skipRatio = 0;
-        let resolutionScale = 1.0;
-        
-        if (spatialManager) {
-          const spatialMetrics = spatialManager.getPerformanceMetrics();
-          culledObjects = spatialMetrics.culledObjects || 0;
-          visibleObjects = spatialMetrics.visibleObjects || 0;
-        }
-        
-        if (uniformManager) {
-          const uniformMetrics = uniformManager.getStats();
-          uniformUpdates = uniformMetrics.updatesThisFrame || 0;
-          skipRatio = uniformMetrics.efficiency || 0;
-        }
-        
-        if (renderManager) {
-          resolutionScale = renderManager.resolutionScale || 1.0;
-        }
-        
         setInfo(prev => ({
           ...prev,
           fps,
           drawCalls,
           triangles,
           textures,
-          geometries,
-          culledObjects,
-          visibleObjects,
-          uniformUpdates,
-          skipRatio,
-          resolutionScale
+          geometries
         }));
         
         setFrames(0);
@@ -126,21 +90,23 @@ const DebugInfo = ({ renderManager, spatialManager, uniformManager }) => {
     return () => {
       cancelAnimationFrame(frameId);
     };
-  }, [debugMode, frames, lastTime, renderManager, spatialManager, uniformManager]);
+  }, [debugMode, frames, lastTime]);
   
   // Listen for camera position updates from the Canvas via a custom event
   useEffect(() => {
     const handleCameraUpdate = (event) => {
-      const { cameraPosition } = event.detail;
-      
-      setInfo(prev => ({
-        ...prev,
-        cameraPos: [
-          Math.round(cameraPosition.x),
-          Math.round(cameraPosition.y),
-          Math.round(cameraPosition.z)
-        ]
-      }));
+      if (event.detail && event.detail.cameraPosition) {
+        const { cameraPosition } = event.detail;
+        
+        setInfo(prev => ({
+          ...prev,
+          cameraPos: [
+            Math.round(cameraPosition.x),
+            Math.round(cameraPosition.y),
+            Math.round(cameraPosition.z)
+          ]
+        }));
+      }
     };
     
     window.addEventListener('cameraPositionUpdate', handleCameraUpdate);
@@ -165,11 +131,8 @@ const DebugInfo = ({ renderManager, spatialManager, uniformManager }) => {
         <div>Drone:</div>
         <div>({info.dronePos[0]}, {info.dronePos[1]}, {info.dronePos[2]})</div>
         
-        <div>Velocity:</div>
-        <div>({info.droneVel[0]}, {info.droneVel[1]}, {info.droneVel[2]})</div>
-        
-        <div>Speed:</div>
-        <div>{Math.sqrt(info.droneVel[0]**2 + info.droneVel[1]**2 + info.droneVel[2]**2).toFixed(2)}</div>
+        <div>Camera:</div>
+        <div>({info.cameraPos[0]}, {info.cameraPos[1]}, {info.cameraPos[2]})</div>
         
         <div className="mt-2 font-bold text-cyan-400 col-span-2">Render Stats:</div>
         
@@ -181,23 +144,6 @@ const DebugInfo = ({ renderManager, spatialManager, uniformManager }) => {
         
         <div>Textures:</div>
         <div>{info.textures}</div>
-        
-        <div>Resolution:</div>
-        <div>{(info.resolutionScale * 100).toFixed(0)}%</div>
-        
-        <div className="mt-2 font-bold text-purple-400 col-span-2">Culling Stats:</div>
-        
-        <div>Visible:</div>
-        <div>{info.visibleObjects}</div>
-        
-        <div>Culled:</div>
-        <div>{info.culledObjects}</div>
-        
-        <div>Uniform Updates:</div>
-        <div>{info.uniformUpdates}</div>
-        
-        <div>Skip Ratio:</div>
-        <div>{(info.skipRatio * 100).toFixed(0)}%</div>
       </div>
       
       <div className="mt-2 text-xs text-gray-400">Press H for controls</div>
@@ -211,10 +157,12 @@ export const CameraTracker = () => {
   const { camera } = useThree();
   
   useFrame(() => {
-    // Dispatch custom event with camera position
-    window.dispatchEvent(new CustomEvent('cameraPositionUpdate', {
-      detail: { cameraPosition: camera.position }
-    }));
+    if (camera) {
+      // Dispatch custom event with camera position
+      window.dispatchEvent(new CustomEvent('cameraPositionUpdate', {
+        detail: { cameraPosition: camera.position }
+      }));
+    }
   });
   
   // This component doesn't render anything

@@ -45,7 +45,7 @@ const ControlsHelp = ({ audio }) => {
       className="absolute bottom-1/4 left-1/2 transform -translate-x-1/2 max-w-lg w-full p-6 bg-black bg-opacity-70 backdrop-blur-sm rounded-lg border border-cyan-500 shadow-lg pointer-events-auto"
     >
       <div className="flex justify-between items-center mb-4">
-        <h3 className="text-cyan-400 text-xl">DRONE CONTROLS</h3>
+        <h3 className="text-cyan-400 text-xl">CONTROLS</h3>
         <div className="flex items-center">
           <button 
             onClick={() => {
@@ -69,31 +69,15 @@ const ControlsHelp = ({ audio }) => {
       
       <div className="grid grid-cols-2 gap-6 text-white">
         <div>
-          <h4 className="text-fuchsia-400 mb-2">Movement</h4>
+          <h4 className="text-fuchsia-400 mb-2">Navigation</h4>
           <ul className="space-y-2">
             <li className="flex items-center">
-              <span className="key-highlight w-8 h-8 bg-gray-800 flex items-center justify-center rounded-md mr-3 border border-cyan-600">W</span>
-              <span>Forward</span>
-            </li>
-            <li className="flex items-center">
-              <span className="key-highlight w-8 h-8 bg-gray-800 flex items-center justify-center rounded-md mr-3 border border-cyan-600">S</span>
-              <span>Backward</span>
-            </li>
-            <li className="flex items-center">
-              <span className="key-highlight w-8 h-8 bg-gray-800 flex items-center justify-center rounded-md mr-3 border border-cyan-600">A</span>
-              <span>Strafe Left</span>
-            </li>
-            <li className="flex items-center">
-              <span className="key-highlight w-8 h-8 bg-gray-800 flex items-center justify-center rounded-md mr-3 border border-cyan-600">D</span>
-              <span>Strafe Right</span>
-            </li>
-            <li className="flex items-center">
-              <span className="key-highlight w-8 h-8 bg-gray-800 flex items-center justify-center rounded-md mr-3 border border-cyan-600">SPACE</span>
-              <span>Ascend</span>
-            </li>
-            <li className="flex items-center">
-              <span className="key-highlight w-8 h-8 bg-gray-800 flex items-center justify-center rounded-md mr-3 border border-cyan-600">SHIFT</span>
-              <span>Descend</span>
+              <span className="key-highlight w-8 h-8 bg-gray-800 flex items-center justify-center rounded-md mr-3 border border-cyan-600">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M6.672 1.911a1 1 0 10-1.932.518l.259.966a1 1 0 001.932-.518l-.26-.966zM2.429 4.74a1 1 0 10-.517 1.932l.966.259a1 1 0 00.517-1.932l-.966-.26zm8.814-.569a1 1 0 00-1.415-1.414l-.707.707a1 1 0 101.415 1.415l.707-.708zm-7.071 7.072l.707-.707A1 1 0 003.465 9.12l-.708.707a1 1 0 001.415 1.415zm3.2-5.171a1 1 0 00-1.3 1.3l4 10a1 1 0 001.823.075l1.38-2.759 3.018 3.02a1 1 0 001.414-1.415l-3.019-3.02 2.76-1.379a1 1 0 00-.076-1.822l-10-4z" clipRule="evenodd" />
+                </svg>
+              </span>
+              <span>Click anywhere to navigate the drone</span>
             </li>
           </ul>
         </div>
@@ -102,20 +86,20 @@ const ControlsHelp = ({ audio }) => {
           <h4 className="text-fuchsia-400 mb-2">Camera Control</h4>
           <ul className="space-y-2">
             <li className="flex items-center">
-              <span className="key-highlight w-8 h-8 bg-gray-800 flex items-center justify-center rounded-md mr-3 border border-cyan-600">←</span>
-              <span>Turn Left</span>
+              <span className="key-highlight w-8 h-8 bg-gray-800 flex items-center justify-center rounded-md mr-3 border border-cyan-600">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                </svg>
+              </span>
+              <span>Drag to rotate the camera</span>
             </li>
             <li className="flex items-center">
-              <span className="key-highlight w-8 h-8 bg-gray-800 flex items-center justify-center rounded-md mr-3 border border-cyan-600">→</span>
-              <span>Turn Right</span>
-            </li>
-            <li className="flex items-center">
-              <span className="key-highlight w-8 h-8 bg-gray-800 flex items-center justify-center rounded-md mr-3 border border-cyan-600">↑</span>
-              <span>Pitch Up</span>
-            </li>
-            <li className="flex items-center">
-              <span className="key-highlight w-8 h-8 bg-gray-800 flex items-center justify-center rounded-md mr-3 border border-cyan-600">↓</span>
-              <span>Pitch Down</span>
+              <span className="key-highlight w-8 h-8 bg-gray-800 flex items-center justify-center rounded-md mr-3 border border-cyan-600">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M3 5a2 2 0 012-2h10a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2V5zm11 1H6v8l4-2 4 2V6z" clipRule="evenodd" />
+                </svg>
+              </span>
+              <span>Scroll to zoom in/out</span>
             </li>
             <li className="flex items-center">
               <span className="key-highlight w-8 h-8 bg-gray-800 flex items-center justify-center rounded-md mr-3 border border-cyan-600">H</span>
