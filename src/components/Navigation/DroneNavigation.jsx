@@ -16,14 +16,14 @@ const DroneNavigation = ({ audio }) => {
     soundEnabled
   } = useStore();
   
+  // Get reference to Three.js state including the invalidate function
+  const { scene, camera, invalidate } = useThree();
+  
   // Drone refs
   const droneRef = useRef();
   const droneModelRef = useRef();
   const propellersRef = useRef([]);
   const droneLightRef = useRef();
-  
-  // Setup three.js objects
-  const { scene, camera, gl } = useThree();
   
   // Persistent vector references to avoid garbage collection
   const raycaster = useMemo(() => new THREE.Raycaster(), []);
@@ -38,14 +38,11 @@ const DroneNavigation = ({ audio }) => {
   // Animation state - persistent references
   const propellerSpeed = useRef(0.5);
   const lightIntensity = useRef(1.5);
+  const timeRef = useRef(0);
+  const lastUpdateTime = useRef(0);
   
-  // Initialize camera to match main.js
-  useEffect(() => {
-    // Set camera position to match main.js
-    camera.position.set(590, 450, 630);
-    camera.lookAt(0, 10, 0);
-    camera.updateProjectionMatrix();
-  }, [camera]);
+  // Animation timing parameters
+  const animationInterval = useRef(1000 / 30); // Aim for ~30 FPS for animations
   
   // Load drone model
   let droneModel;
@@ -91,10 +88,13 @@ const DroneNavigation = ({ audio }) => {
       
       // Add to ref
       droneModelRef.current.add(model);
+      
+      // Trigger a render
+      invalidate();
     }
-  }, [droneModel]);
+  }, [droneModel, invalidate]);
   
-  // Handle mouse click for target navigation - event handlers outside render loop
+  // Handle mouse click for target navigation
   const handleClick = React.useCallback((event) => {
     // Get mouse position in normalized device coordinates
     mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
@@ -131,6 +131,9 @@ const DroneNavigation = ({ audio }) => {
         if (audio?.isInitialized && soundEnabled) {
           audio.playSound('click', { volume: 0.3 });
         }
+        
+        // Trigger a render
+        invalidate();
       }
     }
     
@@ -165,9 +168,12 @@ const DroneNavigation = ({ audio }) => {
         targetPosition.current.y = Math.max(hotspotObject.position.y + 2, 5);
         
         setIsMoving(true);
+        
+        // Trigger a render
+        invalidate();
       }
     }
-  }, [camera, scene, audio, soundEnabled, setActiveHotspot, raycaster, mouse]);
+  }, [camera, scene, audio, soundEnabled, setActiveHotspot, raycaster, mouse, invalidate]);
   
   // Add click listener only once
   useEffect(() => {
@@ -177,26 +183,43 @@ const DroneNavigation = ({ audio }) => {
     };
   }, [handleClick]);
   
-  // Single animation frame function with delta time
+  // Optimized animation frame with delta time that respects on-demand rendering
   useFrame((state, delta) => {
-    // 1. Animate propellers with proper interpolation
-    const targetPropellerSpeed = isMoving ? 2.0 : 0.5;
-    // Interpolate propeller speed
-    propellerSpeed.current += (targetPropellerSpeed - propellerSpeed.current) * delta * 5;
+    // Update our own time reference for consistent animations
+    timeRef.current += delta;
     
-    // Apply to propellers - mutate existing objects instead of creating new ones
-    propellersRef.current.forEach((propeller, index) => {
-      if (propeller) {
-        propeller.rotation.y += propellerSpeed.current * (1 + index * 0.05) * delta * 60;
+    // Check if we should update animations - limit to the target framerate
+    const now = performance.now();
+    const shouldUpdateAnimations = now - lastUpdateTime.current >= animationInterval.current;
+    
+    // Only do animation updates when needed
+    if (shouldUpdateAnimations || isMoving) {
+      lastUpdateTime.current = now;
+      
+      // 1. Animate propellers with proper interpolation
+      const targetPropellerSpeed = isMoving ? 2.0 : 0.5;
+      // Interpolate propeller speed
+      propellerSpeed.current += (targetPropellerSpeed - propellerSpeed.current) * delta * 5;
+      
+      // Apply to propellers - mutate existing objects instead of creating new ones
+      propellersRef.current.forEach((propeller, index) => {
+        if (propeller) {
+          propeller.rotation.y += propellerSpeed.current * (1 + index * 0.05) * delta * 60;
+        }
+      });
+      
+      // 2. Pulse drone light with time-based animation (less frequent updates)
+      if (droneLightRef.current) {
+        const targetIntensity = 1.5 + Math.sin(timeRef.current * 2) * 0.5;
+        // Smooth interpolation for light intensity
+        lightIntensity.current += (targetIntensity - lightIntensity.current) * delta * 3;
+        droneLightRef.current.intensity = lightIntensity.current;
       }
-    });
-    
-    // 2. Pulse drone light with time-based animation
-    if (droneLightRef.current) {
-      const targetIntensity = 1.5 + Math.sin(state.clock.elapsedTime * 2) * 0.5;
-      // Smooth interpolation for light intensity
-      lightIntensity.current += (targetIntensity - lightIntensity.current) * delta * 3;
-      droneLightRef.current.intensity = lightIntensity.current;
+      
+      // Request another render for continuous animations if moving
+      if (isMoving) {
+        invalidate();
+      }
     }
     
     // 3. Move drone to target with proper interpolation and delta time
@@ -220,7 +243,6 @@ const DroneNavigation = ({ audio }) => {
       // Calculate speed based on distance with delta time
       const speed = Math.min(Math.max(distance * 0.02, 0.2), 1.5) * delta * 60;
       
-      // Move toward target without creating new vectors
       // Scale direction vector
       directionVec.multiplyScalar(speed);
       
@@ -234,6 +256,9 @@ const DroneNavigation = ({ audio }) => {
       if (droneRef.current) {
         droneRef.current.position.copy(tempVec3);
       }
+      
+      // Always request another render when the drone is moving
+      invalidate();
     } else if (droneRef.current) {
       // Make sure mesh is in sync with state even when not moving
       droneRef.current.position.fromArray(dronePosition.toArray());
@@ -259,15 +284,18 @@ const DroneNavigation = ({ audio }) => {
         )}
       </group>
       
-      {/* OrbitControls for camera manipulation */}
+      {/* OrbitControls for camera manipulation - now configured to work with on-demand rendering */}
       <OrbitControls 
-        enableDamping
+        enableDamping={true}
         dampingFactor={0.05}
         screenSpacePanning={false}
         minDistance={10}
         maxDistance={1000}
         enablePan={debugMode}
         target={[0, 10, 0]}
+        // For on-demand rendering, we need to manually invoke updates
+        // The ControlsUpdater in App.jsx will handle the invalidation
+        onChange={() => invalidate()}
       />
     </group>
   );

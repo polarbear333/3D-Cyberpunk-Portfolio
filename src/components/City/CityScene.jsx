@@ -1,19 +1,21 @@
 import React, { useRef, useEffect, useState, useMemo } from 'react';
-import { useFrame } from '@react-three/fiber';
+import { useFrame, useThree } from '@react-three/fiber';
 import { Sky } from '@react-three/drei';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { useStore } from '../../state/useStore';
 
-// Optimized CityScene with proper interpolation and object reuse
+// Optimized CityScene with on-demand rendering support
 const CityScene = () => {
   const { debugMode, setCityBounds, setLoading } = useStore();
   const [cityLoaded, setCityLoaded] = useState(false);
   const [loadingProgress, setLoadingProgress] = useState(0);
   
+  // Get access to invalidate for on-demand rendering
+  const { invalidate } = useThree();
+  
   // Refs for scene elements
   const cityRef = useRef();
-  const emissiveMaterialsRef = useRef([]);
   
   // Pre-create and reuse objects instead of generating them in render loop
   const progressBoxRef = useRef(new THREE.Vector3(1, 0.4, 0.6));
@@ -25,7 +27,9 @@ const CityScene = () => {
     currentBatch: 0,
     batchSize: 20,
     updateInterval: 0.1, // seconds between updates
-    lastUpdate: 0
+    lastUpdate: 0,
+    runningAnimation: false, // Track if we need continuous animation
+    animationNeedsUpdate: false // Flag to control when animations run
   });
   
   // Create loader once
@@ -47,7 +51,7 @@ const CityScene = () => {
         // Apply same scale as main.js
         model.scale.set(0.01, 0.01, 0.01);
         
-        // Process materials to track emissive for animation
+        // Collect emissive materials without changing them frequently
         const emissiveMaterials = [];
         
         model.traverse((child) => {
@@ -56,19 +60,27 @@ const CityScene = () => {
             child.castShadow = false;
             child.receiveShadow = false;
             
-            // Preserve original colors while adding emission where appropriate
+            // Find materials with emissive properties
             if (child.material && child.material.emissive) {
-              // Keep original emissive but with gentler boost
-              child.material.emissiveIntensity = 0.8;
-              
-              // Track emissive materials for animation using a single reference
-              emissiveMaterials.push({
-                material: child.material,
-                // Store initial position as a simple array to avoid creating Vector3
-                position: [child.position.x, child.position.y, child.position.z],
-                // Pre-calculate a phase offset for each material for varied animation
-                phase: Math.random() * Math.PI * 2
-              });
+              // Store reference to material with fixed intensity
+              // Instead of animating continuously, use fixed values
+              if (child.material.emissiveIntensity > 0) {
+                // We'll only track materials that already have emission
+                // Each material gets a random but fixed intensity instead of animating
+                const intensity = 0.7 + Math.random() * 0.6;
+                child.material.emissiveIntensity = intensity;
+                
+                // Only store materials we want to animate occasionally
+                // Using a heuristic: 20% of emissive materials get animated
+                if (Math.random() < 0.2) {
+                  emissiveMaterials.push({
+                    material: child.material,
+                    position: [child.position.x, child.position.y, child.position.z],
+                    phase: Math.random() * Math.PI * 2,
+                    baseIntensity: intensity,
+                  });
+                }
+              }
             }
             
             // Optimize material properties
@@ -97,19 +109,23 @@ const CityScene = () => {
           
           // Store emissive materials for animation
           animationState.current.materials = emissiveMaterials;
-          emissiveMaterialsRef.current = emissiveMaterials;
           
           // Mark as loaded
           setCityLoaded(true);
           setLoading(false);
           
-          console.log(`City model loaded with ${emissiveMaterials.length} emissive materials`);
+          console.log(`City model loaded with ${emissiveMaterials.length} animated emissive materials`);
+          
+          // Request a render once the model is loaded
+          invalidate();
         }
       },
       (progress) => {
         if (progress.total > 0) {
           const percent = (progress.loaded / progress.total);
           setLoadingProgress(percent);
+          // Request a render to update the loading progress
+          invalidate();
         }
       },
       (error) => {
@@ -117,7 +133,7 @@ const CityScene = () => {
         loadFallbackModel();
       }
     );
-  }, [cityLoaded, setLoading, setCityBounds, loader]);
+  }, [cityLoaded, setLoading, setCityBounds, loader, invalidate]);
   
   // Create a simple fallback model if loading fails - only called once
   const loadFallbackModel = () => {
@@ -168,12 +184,13 @@ const CityScene = () => {
       building.scale.set(1, height, 1);
       cityGroup.add(building);
       
-      // Track emissive materials
-      if (materialIndex === 2) {
+      // Track only some emissive materials for animation
+      if (materialIndex === 2 && Math.random() < 0.2) {
         emissiveMaterials.push({
           material: materials[materialIndex],
           position: [x, height/2, z],
-          phase: Math.random() * Math.PI * 2
+          phase: Math.random() * Math.PI * 2,
+          baseIntensity: 0.5
         });
       }
     }
@@ -194,17 +211,58 @@ const CityScene = () => {
       
       // Store emissive materials for animation
       animationState.current.materials = emissiveMaterials;
-      emissiveMaterialsRef.current = emissiveMaterials;
       
       setCityLoaded(true);
       setLoading(false);
+      
+      // Request a render once the model is loaded
+      invalidate();
     }
   };
+
+  // Animation patterns optimized for on-demand rendering
+  useEffect(() => {
+    // Only run animations occasionally for emissive materials
+    const startRandomAnimations = () => {
+      // Don't start new animations if we're already running one
+      if (animationState.current.runningAnimation) return;
+      
+      // Only animate if we have materials to animate
+      if (animationState.current.materials.length > 0) {
+        // Flag that animation needs an update
+        animationState.current.animationNeedsUpdate = true;
+        animationState.current.runningAnimation = true;
+        
+        // Request a render to start animation
+        invalidate();
+        
+        // Set a timeout to stop animations after a short period
+        // This prevents continuous re-rendering when not needed
+        setTimeout(() => {
+          animationState.current.runningAnimation = false;
+          animationState.current.animationNeedsUpdate = false;
+        }, 2000); // Run animation for 2 seconds
+      }
+    };
+    
+    // Start random animations every 5-10 seconds
+    const intervalId = setInterval(() => {
+      // 30% chance to start animations at each interval
+      if (Math.random() < 0.3) {
+        startRandomAnimations();
+      }
+    }, 5000 + Math.random() * 5000);
+    
+    return () => clearInterval(intervalId);
+  }, [invalidate]);
 
   // Optimized animation for emissive materials using delta time
   useFrame(({ clock }, delta) => {
     const state = animationState.current;
     state.time += delta;
+    
+    // If we're not in an animation cycle, skip updates
+    if (!state.runningAnimation || !state.animationNeedsUpdate) return;
     
     // Only update materials on an interval for better performance
     if (state.time - state.lastUpdate < state.updateInterval) return;
@@ -223,13 +281,24 @@ const CityScene = () => {
     const endIndex = Math.min(startIndex + state.batchSize, materials.length);
     
     // Update just this batch of materials
+    let anyChanges = false;
     for (let i = startIndex; i < endIndex; i++) {
       const item = materials[i];
       if (item && item.material) {
         // Calculate pulse with item-specific phase to create variety
         const pulse = Math.sin(state.time * 1.5 + item.phase) * 0.3 + 0.7;
-        item.material.emissiveIntensity = pulse;
+        
+        // Only update if the change is significant (reduces unnecessary renders)
+        if (Math.abs(item.material.emissiveIntensity - pulse) > 0.05) {
+          item.material.emissiveIntensity = pulse;
+          anyChanges = true;
+        }
       }
+    }
+    
+    // Only request another render if we made material changes
+    if (anyChanges) {
+      invalidate();
     }
   });
   

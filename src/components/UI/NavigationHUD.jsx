@@ -111,7 +111,7 @@ const NavigationHUD = () => {
         <div className="px-4 py-2 bg-black bg-opacity-60 backdrop-blur-sm text-cyan-400 rounded-lg border border-cyan-600 max-w-md">
           <p className="text-sm">Click anywhere to navigate the drone</p>
           <p className="text-sm mt-1">Use mouse to rotate and zoom the camera view</p>
-          <p className="text-xs mt-2 text-white opacity-60">Visit the glowing hotspots to explore projects</p>
+          <p className="text-xs mt-2 text-white opacity-60">Visit the glowing hotspots to explore</p>
         </div>
       </div>
     </div>
