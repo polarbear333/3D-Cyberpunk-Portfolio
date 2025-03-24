@@ -169,10 +169,10 @@ const LoadingScreen = () => {
         
         {/* System boot messages */}
         <div className="mb-6 font-mono text-xs text-cyan-300">
-          <p> INITIALIZING NEURAL INTERFACE</p>
-          <p> ESTABLISHING DATA CONNECTION</p>
-          <p> RENDERING CYBERNETIC ENVIRONMENT</p>
-          <p className="text-fuchsia-400 animate-pulse"> SYSTEM BOOT IN PROGRESS...</p>
+          <p>&gt; INITIALIZING NEURAL INTERFACE</p>
+          <p>&gt; ESTABLISHING DATA CONNECTION</p>
+          <p>&gt; RENDERING CYBERNETIC ENVIRONMENT</p>
+          <p className="text-fuchsia-400 animate-pulse">&gt; SYSTEM BOOT IN PROGRESS...</p>
         </div>
         
         {/* Cyberpunk progress bar */}
@@ -221,7 +221,8 @@ const LoadingScreen = () => {
         ></div>
       </div>
       
-      <style jsx>{`
+      <style>
+        {`
         @keyframes loading {
           0% { background-position: 200% 0; }
           100% { background-position: -200% 0; }
@@ -231,7 +232,8 @@ const LoadingScreen = () => {
           0% { transform: translateY(0vh); }
           100% { transform: translateY(100vh); }
         }
-      `}</style>
+        `}
+      </style>
     </div>
   );
 };

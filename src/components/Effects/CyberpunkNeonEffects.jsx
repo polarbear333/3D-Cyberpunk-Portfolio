@@ -2,7 +2,6 @@ import React, { useRef, useEffect, useState } from 'react';
 import { useThree, useFrame } from '@react-three/fiber';
 import { EffectComposer, Bloom, Noise, Vignette, ChromaticAberration } from '@react-three/postprocessing';
 import { BlendFunction } from 'postprocessing';
-import { KernelSize } from '@react-three/postprocessing';
 import * as THREE from 'three';
 import { useStore } from '../../state/useStore';
 
@@ -53,19 +52,19 @@ const CyberpunkNeonEffects = ({
     switch (quality) {
       case 'high':
         return {
-          bloomKernelSize: KernelSize.LARGE,
+          bloomKernelSize: 3, // Instead of KernelSize.LARGE
           noiseIntensity: 0.15,
           bloomResolution: 512
         };
       case 'medium':
         return {
-          bloomKernelSize: KernelSize.MEDIUM,
+          bloomKernelSize: 2, // Instead of KernelSize.MEDIUM
           noiseIntensity: 0.12,
           bloomResolution: 256
         };
       default: // 'low'
         return {
-          bloomKernelSize: KernelSize.SMALL,
+          bloomKernelSize: 1, // Instead of KernelSize.SMALL
           noiseIntensity: 0.1,
           bloomResolution: 128
         };

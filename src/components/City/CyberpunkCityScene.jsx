@@ -2,6 +2,7 @@ import React, { useRef, useEffect, useState, useMemo } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { Sky, Environment, useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { useStore } from '../../state/useStore';
 import CyberpunkEnhancer from '../../utils/CyberpunkEnhancer';
 import { CyberpunkEffects } from '../Effects/CyberpunkSceneEffects';
@@ -38,7 +39,7 @@ const CyberpunkCityScene = () => {
   const enhancer = useMemo(() => new CyberpunkEnhancer(), []);
   
   // Create loader once
-  const loader = useMemo(() => new THREE.GLTFLoader(), []);
+  const loader = useMemo(() => new GLTFLoader(), []);
   
   // Generate environment map
   useEffect(() => {
@@ -248,19 +249,6 @@ const CyberpunkCityScene = () => {
       
       {/* City model container */}
       <group ref={cityRef} />
-      
-      {/* Add cyberpunk environmental effects when city is loaded */}
-      {cityLoaded && (
-        <CyberpunkEffects 
-          rain={true}
-          rainIntensity={0.7}
-          vehicles={true}
-          vehicleCount={15}
-          billboards={true}
-          billboardCount={8}
-          atmosphericFog={true}
-        />
-      )}
       
       {/* Debug visualization */}
       {debugMode && (

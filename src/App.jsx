@@ -1,12 +1,15 @@
 import React, { Suspense, useEffect, useState, useRef } from 'react';
 import { Canvas, useThree } from '@react-three/fiber';
-import { Loader } from '@react-three/drei';
+import { Loader, OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
 import { useStore } from './state/useStore';
 import useAudio from './hooks/useAudio';
 import LoadingScreen from './components/UI/LoadingScreen';
 import Interface from './components/UI/Interface';
-import CityScene from './components/City/CityScene';
+import CyberpunkCityScene from './components/City/CyberpunkCityScene';
+import CyberpunkEnvironment from './components/Effects/CyberpunkEnvironment';
+import CyberpunkNeonEffects from './components/Effects/CyberpunkNeonEffects';
+import { CyberpunkEffects } from './components/Effects/CyberpunkSceneEffects';
 import DroneNavigation from './components/Navigation/DroneNavigation';
 import HotspotManager from './components/Hotspots/HotspotManager';
 import DebugInfo, { CameraTracker } from './components/UI/DebugInfo';
@@ -173,7 +176,7 @@ function App() {
       
       // Configure renderer
       rendererRef.current.setClearColor(0x0a0a1a); // Darker blue background
-      rendererRef.current.outputEncoding = THREE.sRGBEncoding;
+      rendererRef.current.outputColorSpace = THREE.SRGBColorSpace; // Modern replacement for outputEncoding
       rendererRef.current.toneMapping = THREE.ReinhardToneMapping;
       rendererRef.current.toneMappingExposure = 2.5;
       
@@ -231,7 +234,9 @@ function App() {
           antialias: true,
           alpha: true,
           preserveDrawingBuffer: true,
-          powerPreference: "default" // Use default instead of "high-performance" to save battery
+          powerPreference: "default", // Use default instead of "high-performance" to save battery
+          stencil: true, // Needed for some post-processing effects
+          depth: true
         }}
         dpr={window.devicePixelRatio > 2 ? 2 : window.devicePixelRatio} // Cap pixel ratio at 2 for performance
         camera={{
@@ -257,14 +262,49 @@ function App() {
           {/* Handles periodic renders for animations */}
           <RenderManager />
           
-          {/* Main 3D scene */}
-          <CityScene />
+          {/* Custom environment map for reflections */}
+          <CyberpunkEnvironment intensity={0.3} />
+          
+          {/* Main enhanced cyberpunk city scene */}
+          <CyberpunkCityScene />
+          
+          {/* Advanced neon glow effects */}
+          <CyberpunkNeonEffects 
+            enableGlow={true}
+            enableBloom={true}
+            bloomStrength={1.2}
+            bloomRadius={0.8}
+            bloomThreshold={0.3}
+            glowIntensity={1.0}
+          />
+          
+          {/* Dynamic environmental elements (will be instantiated by CyberpunkCityScene) */}
+          <CyberpunkEffects 
+            rain={true}
+            rainIntensity={0.7}
+            vehicles={true}
+            vehicleCount={15}
+            billboards={true}
+            billboardCount={8}
+            atmosphericFog={true}
+          />
           
           {/* Drone navigation and camera controls */}
           <DroneNavigation audio={audio} />
           
           {/* Interactive project hotspots */}
           <HotspotManager audio={audio} />
+          
+          {/* Camera controls - enhanced for cyberpunk feel */}
+          <OrbitControls 
+            enableDamping={true}
+            dampingFactor={0.05}
+            screenSpacePanning={false}
+            minDistance={10}
+            maxDistance={1000}
+            enablePan={debugMode}
+            target={[0, 10, 0]}
+          />
           
           {/* Camera position tracker for debug info */}
           <CameraTracker />
@@ -273,23 +313,26 @@ function App() {
       
       {/* Loading indicator */}
       <Loader 
-        dataInterpolation={(p) => `Loading ${p.toFixed(0)}%`}
+        dataInterpolation={(p) => `INITIALIZING NEURAL INTERFACE: ${p.toFixed(0)}%`}
         containerStyles={{
-          background: 'rgba(0, 0, 0, 0.8)',
+          background: 'rgba(5, 0, 30, 0.8)',
+          backdropFilter: 'blur(10px)'
         }}
         barStyles={{
-          background: 'cyan',
+          background: 'linear-gradient(to right, #00FFFF, #FF10F0)',
           height: '4px',
+          boxShadow: '0 0 10px #00FFFF'
         }}
         dataStyles={{
-          color: 'cyan',
-          fontFamily: 'monospace',
+          color: '#00FFFF',
+          fontFamily: '"Share Tech Mono", monospace',
           fontSize: '1rem',
           marginTop: '1rem',
+          textShadow: '0 0 5px #00FFFF'
         }}
       />
       
-      {/* 2D UI overlay */}
+      {/* 2D UI overlay with cyberpunk styling */}
       <Interface audio={audio} />
       
       {/* Debug Info */}
@@ -297,6 +340,9 @@ function App() {
       
       {/* Only show stats in debug mode */}
       {debugMode && <StatsPanel mode={0} position="top-left" />}
+      
+      {/* Global scanline effect */}
+      <div className="scanline"></div>
     </div>
   );
 }

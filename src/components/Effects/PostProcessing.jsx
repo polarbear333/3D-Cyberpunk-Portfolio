@@ -3,7 +3,7 @@ import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useStore } from '../../state/useStore';
 
-// Extremely simplified post-processing for minimal memory usage
+
 const PostProcessing = () => {
   const { gl, scene, camera, size } = useThree();
   const [effectsEnabled, setEffectsEnabled] = useState(false);
