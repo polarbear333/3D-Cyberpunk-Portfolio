@@ -88,82 +88,47 @@ This project aims to create an immersive, interactive 3D portfolio website where
 
 ## File structure for frontend
 
-3D-Cyberpunk-Portfolio/
-│── public/                    # Static assets (e.g., textures, models, fonts)
-│── src/
-│   ├── assets/                 # 3D models, textures, sound files
-│   ├── components/             # Reusable UI components
-│   │   ├── UI/                 # 2D UI elements (e.g., overlays, menus)
-│   │   ├── Navigation/         # Drone controls and interactions
-│   │   ├── City/               # 3D environment components
-│   │   ├── Hotspots/           # Interactive elements
-│   ├── hooks/                  # Custom React hooks for state management
-│   ├── scenes/                 # Three.js scene management
-│   ├── shaders/                # Custom shaders for neon effects
-│   ├── state/                  # Zustand/Redux for global state management
-│   ├── utils/                  # Helper functions (e.g., math, animation utilities)
-│   ├── App.jsx                 # Main app entry point
-│   ├── index.jsx               # React DOM render entry point
-│── package.json
-│── vite.config.js              # Build tool config (Vite/Webpack)
-│── README.md
-│── .gitignore
+src/
+├── App.jsx                       (Updated main application component)
+├── components/
+│   ├── City/
+│   │   ├── CyberpunkCityScene.jsx (Enhanced with material optimizations)
+│   │   └── CyberpunkPortfolioApp.jsx (Alternative entry point)
+│   ├── Effects/
+│   │   ├── CyberpunkEnvironment.jsx (Layered environment system)
+│   │   └── CyberpunkSceneEffects.jsx (Keep for scene elements only)
+│   ├── Hotspots/
+│   │   └── HotspotManager.jsx    (Project showcase points)
+│   ├── Navigation/
+│   │   └── DroneNavigation.jsx   (Drone controls & movement)
+│   └── UI/
+│       ├── ControlsHelp.jsx      (UI help overlay)
+│       ├── DebugInfo.jsx         (Debug information panel)
+│       ├── Interface.jsx         (Main UI overlay)
+│       ├── LoadingScreen.jsx     (Loading screen)
+│       ├── NavigationHUD.jsx     (Navigation interface)
+│       ├── ProjectOverlay.jsx    (Project details popup)
+│       └── StatsPanel.jsx        (Performance stats)
+├── hooks/
+│   └── useAudio.js               (Audio management hook)
+├── state/
+│   └── useStore.js               (Zustand store for state management)
+├── utils/
+│   ├── OptimizedRenderer.jsx     (New component for multi-pass rendering)
+│   ├── CyberpunkEnhancer.js      (Material enhancement utility)
+│   ├── RenderingManager.js       (Core rendering pipeline)
+│   ├── SpatialManager.js         (Spatial optimization utility)
+│   ├── UniformManager.js         (Shader uniform optimization)
+│   ├── buildingGenerator.js      (Procedural building generation)
+│   ├── mathUtils.js              (Math helper functions)
+│   ├── resourceManager.js        (Asset loading/management)
+│   └── resourceUtils.js          (Asset utility functions)
+└── index.js                      (Entry point)
 
-
-Module/Component Design
-1. Drone Navigation System (components/Navigation/DroneControls.jsx)
-Handles drone movement using Three.js FlyControls or a custom system.
-
-Props: Speed, acceleration, sensitivity
-State: Position, rotation, velocity
-Features:
-Smooth drone motion (GSAP integration)
-First-person and third-person camera modes
-Collision detection to prevent clipping
-2. Cyberpunk City Scene (components/City/CityScene.jsx)
-Manages the entire 3D environment, including buildings, lighting, and effects.
-
-Props: Scene configuration, assets
-State: Active objects, lighting conditions
-Features:
-Dynamic lighting & neon glow effects
-Procedural city layout (optional)
-Optimized Level of Detail (LOD) models
-3. Interactive Hotspots (components/Hotspots/Hotspot.jsx)
-Defines clickable/interactable locations within the 3D environment.
-
-Props: Position, action callback, highlight effect
-State: Hover state, active project ID
-Features:
-Raycasting detection
-Click/hover-based interactions
-Trigger UI overlays on selection
-4. UI Overlay (components/UI/Overlay.jsx)
-Displays project details and navigation options in 2D.
-
-Props: Active project ID, content
-State: Visibility, animation states
-Features:
-Smooth GSAP transitions
-Dynamic content loading (e.g., fetching project details)
-Close and navigate functions
-5. Global State Management (state/useStore.js)
-Handles app-wide state using Zustand or Redux.
-
-State: Active project, camera position, UI toggles
-Features:
-Shared state for UI and 3D interactions
-Performance-optimized updates
-6. Shader Effects (shaders/neonGlow.glsl)
-Custom GLSL shaders for cyberpunk-style neon lighting.
-
-Features:
-Bloom effect with emissive textures
-Realistic light diffusion for city elements
-7. Utility Functions (utils/helpers.js)
-Common helper functions.
-
-Features:
-Vector math for movement
-Animation utilities
-Asset loading optimizations
+App.jsx
+  └── Canvas
+      ├── OptimizedRenderer (post-processing)
+      ├── CyberpunkEnvironment (skybox, fog, lighting)
+      ├── CyberpunkCityScene (3D models, buildings)
+      ├── FlyingVehicles, Rain, etc. (from CyberpunkSceneEffects)
+      └── DroneNavigation, HotspotManager, etc.

@@ -4,16 +4,29 @@ import { Loader, OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
 import { useStore } from './state/useStore';
 import useAudio from './hooks/useAudio';
+
+// UI Components
 import LoadingScreen from './components/UI/LoadingScreen';
 import Interface from './components/UI/Interface';
-import CyberpunkCityScene from './components/City/CyberpunkCityScene';
-import CyberpunkEnvironment from './components/Effects/CyberpunkEnvironment';
-import CyberpunkNeonEffects from './components/Effects/CyberpunkNeonEffects';
-import { CyberpunkEffects } from './components/Effects/CyberpunkSceneEffects';
-import DroneNavigation from './components/Navigation/DroneNavigation';
-import HotspotManager from './components/Hotspots/HotspotManager';
 import DebugInfo, { CameraTracker } from './components/UI/DebugInfo';
 import StatsPanel from './components/UI/StatsPanel';
+
+// Scene Components
+import CyberpunkCityScene from './components/City/CyberpunkCityScene';
+import CyberpunkEnvironment from './components/Effects/CyberpunkEnvironment';
+import DroneNavigation from './components/Navigation/DroneNavigation';
+import HotspotManager from './components/Hotspots/HotspotManager';
+
+// Rendering System
+import OptimizedRenderer from './utils/OptimizedRenderer';
+
+// Scene Effects (individual imports instead of the wrapper)
+import { 
+  FlyingVehicles, 
+  CyberpunkRain,
+  AnimatedBillboards, 
+  AtmosphericFog 
+} from './components/Effects/CyberpunkSceneEffects';
 
 // This component helps synchronize the OrbitControls with on-demand rendering
 function ControlsUpdater() {
@@ -262,32 +275,25 @@ function App() {
           {/* Handles periodic renders for animations */}
           <RenderManager />
           
-          {/* Custom environment map for reflections */}
+          {/* Advanced multi-pass rendering system */}
+          <OptimizedRenderer 
+            bloomStrength={1.2}
+            bloomRadius={0.8}
+            bloomThreshold={0.3}
+            adaptiveResolution={true}
+          />
+          
+          {/* Layered cyberpunk environment with skybox, fog and lighting */}
           <CyberpunkEnvironment intensity={0.3} />
           
           {/* Main enhanced cyberpunk city scene */}
           <CyberpunkCityScene />
           
-          {/* Advanced neon glow effects */}
-          <CyberpunkNeonEffects 
-            enableGlow={true}
-            enableBloom={true}
-            bloomStrength={1.2}
-            bloomRadius={0.8}
-            bloomThreshold={0.3}
-            glowIntensity={1.0}
-          />
-          
-          {/* Dynamic environmental elements (will be instantiated by CyberpunkCityScene) */}
-          <CyberpunkEffects 
-            rain={true}
-            rainIntensity={0.7}
-            vehicles={true}
-            vehicleCount={15}
-            billboards={true}
-            billboardCount={8}
-            atmosphericFog={true}
-          />
+          {/* Dynamic environmental elements - now individual components */}
+          <FlyingVehicles count={15} speed={1.0} />
+          <CyberpunkRain intensity={0.7} />
+          <AnimatedBillboards count={8} />
+          <AtmosphericFog />
           
           {/* Drone navigation and camera controls */}
           <DroneNavigation audio={audio} />

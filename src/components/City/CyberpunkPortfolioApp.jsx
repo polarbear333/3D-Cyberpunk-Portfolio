@@ -6,8 +6,7 @@ import { useStore } from '../../state/useStore';
 // Import our custom components
 import CyberpunkCityScene from './CyberpunkCityScene';
 import CyberpunkEnvironment from '../Effects/CyberpunkEnvironment';
-import CyberpunkNeonEffects from '../Effects/CyberpunkNeonEffects.jsx';
-import { CyberpunkEffects } from '../Effects/CyberpunkSceneEffects';
+import OptimizedRenderer from '../../utils/OptimizedRenderer';
 import DroneNavigation from '../Navigation/DroneNavigation';
 import HotspotManager from '../Hotspots/HotspotManager';
 import DebugInfo, { CameraTracker } from '../UI/DebugInfo';
@@ -15,8 +14,17 @@ import StatsPanel from '../UI/StatsPanel';
 import LoadingScreen from '../UI/LoadingScreen';
 import Interface from '../UI/Interface';
 
+// Import individual scene effects but not the rendering parts
+import { 
+  FlyingVehicles, 
+  CyberpunkRain,
+  AnimatedBillboards, 
+  AtmosphericFog 
+} from '../Effects/CyberpunkSceneEffects';
+
 /**
  * Main application component integrating all cyberpunk scene elements
+ * with optimized rendering pipeline
  */
 function CyberpunkPortfolioApp() {
   const { isLoading, debugMode, setLoading, soundEnabled } = useStore();
@@ -46,34 +54,25 @@ function CyberpunkPortfolioApp() {
       >
         {/* Create a Suspense boundary for async loading */}
         <Suspense fallback={null}>
-          {/* Custom environment map for reflections */}
+          {/* Advanced multi-pass rendering system - replacing CyberpunkNeonEffects and PostProcessing */}
+          <OptimizedRenderer 
+            bloomStrength={1.2}
+            bloomRadius={0.8}
+            bloomThreshold={0.3}
+            adaptiveResolution={true}
+          />
+          
+          {/* Layered cyberpunk environment with skybox, fog and lighting */}
           <CyberpunkEnvironment intensity={0.3} />
           
           {/* Main enhanced cyberpunk city scene */}
           <CyberpunkCityScene />
           
-          {/* Advanced neon glow effects */}
-          <CyberpunkNeonEffects 
-            enableGlow={true}
-            enableBloom={true}
-            bloomStrength={1.2}
-            bloomRadius={0.8}
-            bloomThreshold={0.3}
-            glowIntensity={1.0}
-          />
-          
-          {/* Dynamic environmental elements (will be instantiated by CyberpunkCityScene) */}
-          {/* 
-          <CyberpunkEffects 
-            rain={true}
-            rainIntensity={0.7}
-            vehicles={true}
-            vehicleCount={15}
-            billboards={true}
-            billboardCount={8}
-            atmosphericFog={true}
-          />
-          */}
+          {/* Dynamic environmental elements - these are actual 3D objects, not post-processing effects */}
+          <FlyingVehicles count={15} speed={1.0} />
+          <CyberpunkRain intensity={0.7} />
+          <AnimatedBillboards count={8} />
+          <AtmosphericFog />
           
           {/* Drone navigation and camera controls */}
           <DroneNavigation />
@@ -90,6 +89,8 @@ function CyberpunkPortfolioApp() {
             maxDistance={1000}
             enablePan={debugMode}
             target={[0, 10, 0]}
+            // For on-demand rendering, trigger renders on camera change
+            onChange={(state) => state.invalidate()}
           />
           
           {/* Camera position tracker for debug info */}
