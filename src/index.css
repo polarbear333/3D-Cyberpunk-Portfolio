@@ -6,10 +6,12 @@
 
 :root {
   --neon-blue: #00FFFF;
-  --neon-pink: #FF10F0;
-  --neon-purple: #7B68EE;
-  --neon-yellow: #FFFF00;
-  --cyber-black: #0a0a0a;
+  --neon-pink: #FF00FF; 
+  --neon-purple: #9D00FF;
+  --neon-green: #00FF66;
+  --neon-yellow: #FCEE09;
+  --cyber-black: #05001E;
+  --cyber-dark-blue: #0a0a25;
 }
 
 html, body {
@@ -23,23 +25,25 @@ html, body {
 
 /* Custom scrollbar */
 ::-webkit-scrollbar {
-  width: 6px;
+  width: 8px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #1a1a1a;
+  background: var(--cyber-dark-blue);
+  border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb {
   background: var(--neon-blue);
   border-radius: 3px;
+  border: 1px solid rgba(0, 255, 255, 0.3);
 }
 
 ::-webkit-scrollbar-thumb:hover {
   background: var(--neon-pink);
 }
 
-/* Scanline effect */
+/* Enhanced scanline effect */
 .scanline {
   position: fixed;
   top: 0;
@@ -49,17 +53,31 @@ html, body {
   background: linear-gradient(
     to bottom,
     transparent 50%,
-    rgba(0, 255, 255, 0.02) 50%
+    rgba(0, 255, 255, 0.03) 50%
   );
   background-size: 100% 4px;
   z-index: 999;
   pointer-events: none;
-  opacity: 0.2;
+  opacity: 0.3;
+  animation: scanlineAnimation 10s linear infinite;
 }
 
-/* Glitch effect */
+@keyframes scanlineAnimation {
+  0% {
+    background-position: 0 0;
+  }
+  100% {
+    background-position: 0 100%;
+  }
+}
+
+/* Enhanced glitch effect */
 .glitch {
   position: relative;
+  color: white;
+  text-shadow: 
+    0 0 5px var(--neon-blue),
+    0 0 10px var(--neon-blue);
 }
 
 .glitch::before,
@@ -74,14 +92,14 @@ html, body {
 
 .glitch::before {
   left: 2px;
-  text-shadow: -1px 0 var(--neon-pink);
+  text-shadow: -2px 0 var(--neon-pink);
   clip: rect(44px, 450px, 56px, 0);
   animation: glitch-animation 5s infinite linear alternate-reverse;
 }
 
 .glitch::after {
   left: -2px;
-  text-shadow: 1px 0 var(--neon-blue);
+  text-shadow: 2px 0 var(--neon-blue);
   clip: rect(44px, 450px, 56px, 0);
   animation: glitch-animation 5s infinite linear alternate;
 }
@@ -149,5 +167,125 @@ html, body {
   }
   100% {
     clip: rect(82px, 9999px, 29px, 0);
+  }
+}
+
+/* Cyberpunk UI elements */
+.cyber-button {
+  position: relative;
+  background: var(--cyber-black);
+  color: var(--neon-blue);
+  border: 1px solid var(--neon-blue);
+  box-shadow: 0 0 10px 0 rgba(0, 255, 255, 0.5);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  overflow: hidden;
+  transition: all 0.2s ease;
+}
+
+.cyber-button:hover {
+  background: rgba(0, 255, 255, 0.1);
+  color: white;
+  box-shadow: 0 0 20px 0 rgba(0, 255, 255, 0.8);
+}
+
+.cyber-button::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(0, 255, 255, 0.4),
+    transparent
+  );
+  transition: all 0.4s ease;
+}
+
+.cyber-button:hover::before {
+  left: 100%;
+}
+
+/* Neon text effect */
+.neon-text {
+  color: white;
+  text-shadow: 
+    0 0 5px var(--neon-blue),
+    0 0 10px var(--neon-blue),
+    0 0 20px var(--neon-blue),
+    0 0 40px var(--neon-blue);
+}
+
+.neon-text-pink {
+  color: white;
+  text-shadow: 
+    0 0 5px var(--neon-pink),
+    0 0 10px var(--neon-pink),
+    0 0 20px var(--neon-pink),
+    0 0 40px var(--neon-pink);
+}
+
+.neon-text-green {
+  color: white;
+  text-shadow: 
+    0 0 5px var(--neon-green),
+    0 0 10px var(--neon-green),
+    0 0 20px var(--neon-green),
+    0 0 40px var(--neon-green);
+}
+
+/* Cyberpunk container with neon border */
+.cyber-container {
+  background: rgba(5, 0, 30, 0.7);
+  border: 1px solid var(--neon-blue);
+  box-shadow: 
+    0 0 10px rgba(0, 255, 255, 0.5),
+    inset 0 0 10px rgba(0, 255, 255, 0.2);
+  backdrop-filter: blur(5px);
+}
+
+.cyber-container-pink {
+  background: rgba(5, 0, 30, 0.7);
+  border: 1px solid var(--neon-pink);
+  box-shadow: 
+    0 0 10px rgba(255, 0, 255, 0.5),
+    inset 0 0 10px rgba(255, 0, 255, 0.2);
+  backdrop-filter: blur(5px);
+}
+
+/* Cyberpunk grid overlay */
+.cyber-grid {
+  background-image: 
+    linear-gradient(to right, rgba(0, 255, 255, 0.1) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(0, 255, 255, 0.1) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+/* Loading bar */
+.cyber-loading-bar {
+  height: 5px;
+  background: var(--cyber-black);
+  border: 1px solid var(--neon-blue);
+  overflow: hidden;
+}
+
+.cyber-loading-bar::before {
+  content: '';
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, var(--neon-blue), var(--neon-pink));
+  animation: loading 2s ease infinite;
+}
+
+@keyframes loading {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
   }
 }

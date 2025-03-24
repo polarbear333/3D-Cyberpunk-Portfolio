@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { useStore } from '../../state/useStore';
 
-// Optimized CityScene with on-demand rendering support
+// Optimized CityScene with cyberpunk Hong Kong/Tokyo night theme
 const CityScene = () => {
   const { debugMode, setCityBounds, setLoading } = useStore();
   const [cityLoaded, setCityLoaded] = useState(false);
@@ -35,23 +35,35 @@ const CityScene = () => {
   // Create loader once
   const loader = useMemo(() => new GLTFLoader(), []);
   
+  // Cyberpunk color palette
+  const cyberpunkColors = useMemo(() => ({
+    neonPink: new THREE.Color('#FF00FF').convertSRGBToLinear(),
+    neonBlue: new THREE.Color('#00FFFF').convertSRGBToLinear(),
+    neonPurple: new THREE.Color('#9D00FF').convertSRGBToLinear(),
+    neonGreen: new THREE.Color('#00FF66').convertSRGBToLinear(),
+    neonOrange: new THREE.Color('#FF6E27').convertSRGBToLinear(),
+    neonYellow: new THREE.Color('#FCEE09').convertSRGBToLinear(),
+    darkBlue: new THREE.Color('#05001E').convertSRGBToLinear(),
+    darkPurple: new THREE.Color('#0D0221').convertSRGBToLinear(),
+  }), []);
+  
   // Load city model
   useEffect(() => {
     if (cityLoaded) return;
     
-    console.log("Loading city model...");
+    console.log("Loading city model with cyberpunk styling...");
     setLoading(true);
     
-    // Load model with simplified error handling
+    // Load model with cyberpunk styling
     loader.load(
-      '/models/cybercity/scene.gltf', // Same path as main.js
+      '/models/cybercity/scene.gltf',
       (gltf) => {
         const model = gltf.scene;
         
-        // Apply same scale as main.js
+        // Apply scale as in main.js
         model.scale.set(0.01, 0.01, 0.01);
         
-        // Collect emissive materials without changing them frequently
+        // Process materials for cyberpunk theme
         const emissiveMaterials = [];
         
         model.traverse((child) => {
@@ -60,34 +72,56 @@ const CityScene = () => {
             child.castShadow = false;
             child.receiveShadow = false;
             
-            // Find materials with emissive properties
-            if (child.material && child.material.emissive) {
-              // Store reference to material with fixed intensity
-              // Instead of animating continuously, use fixed values
-              if (child.material.emissiveIntensity > 0) {
-                // We'll only track materials that already have emission
-                // Each material gets a random but fixed intensity instead of animating
-                const intensity = 0.7 + Math.random() * 0.6;
-                child.material.emissiveIntensity = intensity;
+            // Enhance all materials for cyberpunk look
+            if (child.material) {
+              // Make regular materials darker
+              if (child.material.color) {
+                // Darken non-emissive colors slightly to create contrast with neons
+                child.material.color.multiplyScalar(0.85);
+              }
+              
+              // Find materials with emissive properties to make them pop
+              if (child.material.emissive) {
+                // Determine which cyberpunk color to use based on original color
+                let originalColor = child.material.emissive.clone();
                 
-                // Only store materials we want to animate occasionally
-                // Using a heuristic: 20% of emissive materials get animated
-                if (Math.random() < 0.2) {
+                // Boost the emissive intensity significantly for a neon look
+                child.material.emissiveIntensity = 1.5;
+                
+                // Apply a more vibrant neon color based on closest match
+                if (originalColor.r > originalColor.g && originalColor.r > originalColor.b) {
+                  // Red-dominant becomes neon pink
+                  child.material.emissive.copy(cyberpunkColors.neonPink);
+                } else if (originalColor.g > originalColor.r && originalColor.g > originalColor.b) {
+                  // Green-dominant becomes neon green
+                  child.material.emissive.copy(cyberpunkColors.neonGreen);
+                } else if (originalColor.b > originalColor.r && originalColor.b > originalColor.g) {
+                  // Blue-dominant becomes neon blue
+                  child.material.emissive.copy(cyberpunkColors.neonBlue);
+                } else if (originalColor.r > 0.5 && originalColor.g > 0.5) {
+                  // Yellow-ish becomes neon yellow
+                  child.material.emissive.copy(cyberpunkColors.neonYellow);
+                } else if (originalColor.r > 0.5 && originalColor.b > 0.5) {
+                  // Purple-ish becomes neon purple
+                  child.material.emissive.copy(cyberpunkColors.neonPurple);
+                }
+                
+                // Track 40% of emissive materials for animation (more than before for better visual impact)
+                if (Math.random() < 0.4) {
                   emissiveMaterials.push({
                     material: child.material,
                     position: [child.position.x, child.position.y, child.position.z],
                     phase: Math.random() * Math.PI * 2,
-                    baseIntensity: intensity,
+                    baseIntensity: child.material.emissiveIntensity
                   });
                 }
               }
-            }
-            
-            // Optimize material properties
-            if (child.material && child.material.metalness !== undefined) {
-              child.material.metalness = 0.4;
-              child.material.roughness = 0.6;
-              // Don't call convertSRGBToLinear in the loop - do it once if needed
+              
+              // Adjust metalness and roughness for a more cyberpunk look
+              if (child.material.metalness !== undefined) {
+                child.material.metalness = 0.7; // Higher metalness for reflectivity
+                child.material.roughness = 0.3; // Less roughness for more shine
+              }
             }
           }
         });
@@ -130,67 +164,129 @@ const CityScene = () => {
       },
       (error) => {
         console.error("Error loading city model:", error);
-        loadFallbackModel();
+        loadCyberpunkFallbackModel();
       }
     );
-  }, [cityLoaded, setLoading, setCityBounds, loader, invalidate]);
+  }, [cityLoaded, setLoading, setCityBounds, loader, invalidate, cyberpunkColors]);
   
-  // Create a simple fallback model if loading fails - only called once
-  const loadFallbackModel = () => {
-    console.log("Loading fallback model");
+  // Create a cyberpunk fallback model if loading fails
+  const loadCyberpunkFallbackModel = () => {
+    console.log("Loading cyberpunk fallback model");
     
-    // Create a ground plane
+    // Create a ground plane with cyberpunk grid texture
+    const groundMaterial = new THREE.MeshStandardMaterial({
+      color: '#050023',
+      roughness: 0.8,
+      metalness: 0.2
+    });
+    
+    // Add grid pattern to the ground with GridHelper
     const ground = new THREE.Mesh(
       new THREE.PlaneGeometry(200, 200),
-      new THREE.MeshStandardMaterial({
-        color: '#111111',
-        roughness: 0.8,
-        metalness: 0.2
-      })
+      groundMaterial
     );
     ground.rotation.x = -Math.PI / 2;
     ground.position.y = -0.1;
     
-    // Create simple buildings
+    // Add grid lines separately
+    const grid = new THREE.GridHelper(200, 40, 0x00FFFF, 0x00FFFF);
+    grid.position.y = 0.1;
+    
+    // Create buildings with neon outlines
     const cityGroup = new THREE.Group();
     cityGroup.add(ground);
+    cityGroup.add(grid);
     
-    // Add some simple buildings with shared geometry for performance
-    const buildingGeo = new THREE.BoxGeometry(5, 1, 5);
-    const materials = [
+    // Building materials with cyberpunk style
+    const buildingMaterials = [
       new THREE.MeshStandardMaterial({
-        color: '#333333'
+        color: '#05001E',
+        roughness: 0.7,
+        metalness: 0.3
       }),
       new THREE.MeshStandardMaterial({
-        color: '#222222'
+        color: '#0A0A25',
+        roughness: 0.5,
+        metalness: 0.5
+      }),
+      // Neon-rimmed buildings
+      new THREE.MeshStandardMaterial({
+        color: '#030012',
+        emissive: cyberpunkColors.neonBlue,
+        emissiveIntensity: 2.0,
+        roughness: 0.3,
+        metalness: 0.7
       }),
       new THREE.MeshStandardMaterial({
-        color: '#222222',
-        emissive: new THREE.Color('#00FFFF'),
-        emissiveIntensity: 0.5
+        color: '#030012',
+        emissive: cyberpunkColors.neonPink,
+        emissiveIntensity: 2.0,
+        roughness: 0.3,
+        metalness: 0.7
+      }),
+      new THREE.MeshStandardMaterial({
+        color: '#030012',
+        emissive: cyberpunkColors.neonPurple,
+        emissiveIntensity: 2.0,
+        roughness: 0.3,
+        metalness: 0.7
       })
     ];
     
     const emissiveMaterials = [];
+    const buildingGeo = new THREE.BoxGeometry(5, 1, 5);
     
-    for (let i = 0; i < 50; i++) {
+    // Create a cyberpunk-style skyline with taller buildings
+    for (let i = 0; i < 60; i++) {
       const x = Math.random() * 100 - 50;
       const z = Math.random() * 100 - 50;
-      const height = Math.random() * 15 + 5;
+      const height = Math.random() * 25 + 10; // Taller buildings for a city skyline
       
-      const materialIndex = Math.floor(Math.random() * materials.length);
-      const building = new THREE.Mesh(buildingGeo, materials[materialIndex]);
+      const materialIndex = Math.floor(Math.random() * buildingMaterials.length);
+      const building = new THREE.Mesh(buildingGeo, buildingMaterials[materialIndex]);
       building.position.set(x, height / 2, z);
       building.scale.set(1, height, 1);
       cityGroup.add(building);
       
-      // Track only some emissive materials for animation
-      if (materialIndex === 2 && Math.random() < 0.2) {
+      // Add window lights to buildings
+      if (Math.random() > 0.3) {
+        const windowMat = new THREE.MeshBasicMaterial({
+          color: Math.random() > 0.5 ? 0x00FFFF : 0xFF00FF,
+          transparent: true,
+          opacity: 0.9
+        });
+        
+        // Add random window patterns
+        const windowCount = Math.floor(Math.random() * 8) + 3;
+        for (let j = 0; j < windowCount; j++) {
+          const windowSize = 0.3;
+          const windowGeo = new THREE.PlaneGeometry(windowSize, windowSize);
+          const window = new THREE.Mesh(windowGeo, windowMat);
+          
+          // Position on building face
+          const side = Math.floor(Math.random() * 4); // 0: front, 1: right, 2: back, 3: left
+          const wx = (side === 1) ? 0.5 : (side === 3 ? -0.5 : (Math.random() - 0.5));
+          const wz = (side === 0) ? 0.5 : (side === 2 ? -0.5 : (Math.random() - 0.5));
+          const wy = (Math.random() - 0.5) * 0.8;
+          
+          window.position.set(wx * 5, wy * height, wz * 5);
+          
+          // Rotate based on side
+          if (side === 1) window.rotation.y = Math.PI / 2;
+          if (side === 2) window.rotation.y = Math.PI;
+          if (side === 3) window.rotation.y = -Math.PI / 2;
+          
+          building.add(window);
+        }
+      }
+      
+      // Track emissive materials from buildings
+      if (materialIndex >= 2) { // Only buildings with emissive materials
         emissiveMaterials.push({
-          material: materials[materialIndex],
+          material: buildingMaterials[materialIndex],
           position: [x, height/2, z],
           phase: Math.random() * Math.PI * 2,
-          baseIntensity: 0.5
+          baseIntensity: buildingMaterials[materialIndex].emissiveIntensity
         });
       }
     }
@@ -222,7 +318,7 @@ const CityScene = () => {
 
   // Animation patterns optimized for on-demand rendering
   useEffect(() => {
-    // Only run animations occasionally for emissive materials
+    // Run animations more frequently for cyberpunk feel
     const startRandomAnimations = () => {
       // Don't start new animations if we're already running one
       if (animationState.current.runningAnimation) return;
@@ -237,21 +333,21 @@ const CityScene = () => {
         invalidate();
         
         // Set a timeout to stop animations after a short period
-        // This prevents continuous re-rendering when not needed
+        // Run longer for more visual impact
         setTimeout(() => {
           animationState.current.runningAnimation = false;
           animationState.current.animationNeedsUpdate = false;
-        }, 2000); // Run animation for 2 seconds
+        }, 3000); // Run animation for 3 seconds
       }
     };
     
-    // Start random animations every 5-10 seconds
+    // Start random animations more frequently for cyberpunk feel
     const intervalId = setInterval(() => {
-      // 30% chance to start animations at each interval
-      if (Math.random() < 0.3) {
+      // 50% chance to start animations at each interval (higher frequency)
+      if (Math.random() < 0.5) {
         startRandomAnimations();
       }
-    }, 5000 + Math.random() * 5000);
+    }, 3000 + Math.random() * 4000); // More frequent animations (3-7 seconds)
     
     return () => clearInterval(intervalId);
   }, [invalidate]);
@@ -285,10 +381,12 @@ const CityScene = () => {
     for (let i = startIndex; i < endIndex; i++) {
       const item = materials[i];
       if (item && item.material) {
-        // Calculate pulse with item-specific phase to create variety
-        const pulse = Math.sin(state.time * 1.5 + item.phase) * 0.3 + 0.7;
+        // Calculate pulse with item-specific phase for a more varied flickering look
+        // Use a more dramatic pulse for cyberpunk look
+        const baseIntensity = item.baseIntensity || 1.5;
+        const pulse = baseIntensity * (Math.sin(state.time * 2.5 + item.phase) * 0.4 + 0.8);
         
-        // Only update if the change is significant (reduces unnecessary renders)
+        // Only update if the change is significant
         if (Math.abs(item.material.emissiveIntensity - pulse) > 0.05) {
           item.material.emissiveIntensity = pulse;
           anyChanges = true;
@@ -304,42 +402,49 @@ const CityScene = () => {
   
   return (
     <group>
-      {/* Environment */}
-      <fog attach="fog" args={['#0a0a0a', 0.002]} />
-      <color attach="background" args={['#0a0a1a']} />
+      {/* Darker cyberpunk environment */}
+      <fog attach="fog" args={['#050023', 0.0015]} /> {/* Deeper blue fog */}
+      <color attach="background" args={['#05001E']} /> {/* Dark blue background */}
       
-      {/* Lighting setup - matching main.js */}
-      <ambientLight intensity={1.0} color="#ffffff" />
+      {/* Cyberpunk-themed lighting */}
+      <ambientLight intensity={0.25} color="#3311bb" /> {/* Subtle blue ambient */}
       
+      {/* Main directional light */}
       <directionalLight 
         position={[5, 30, 5]} 
-        intensity={1.0} 
-        color="#ffffff"
+        intensity={0.7} 
+        color="#8840FF" 
         castShadow
       />
       
-      {/* Neon accent lights - same as main.js */}
-      <pointLight position={[10, 25, 10]} intensity={0.6} color="#00aaff" distance={70} />
-      <pointLight position={[-10, 20, -10]} intensity={0.5} color="#ff00aa" distance={70} />
-      <pointLight position={[0, 15, -15]} intensity={0.4} color="#00ff88" distance={70} />
-      <pointLight position={[-15, 10, 5]} intensity={0.3} color="#aa00ff" distance={70} />
+      {/* Neon accent lights with more saturated colors */}
+      <pointLight position={[10, 25, 10]} intensity={0.8} color="#00FFFF" distance={90} />
+      <pointLight position={[-10, 20, -10]} intensity={0.7} color="#FF00FF" distance={90} />
+      <pointLight position={[0, 15, -15]} intensity={0.6} color="#00FF66" distance={90} />
+      <pointLight position={[-15, 10, 5]} intensity={0.5} color="#9D00FF" distance={90} />
+      <pointLight position={[15, 5, 15]} intensity={0.4} color="#FCEE09" distance={90} />
       
-      {/* Simplified Sky */}
+      {/* Dark night sky */}
       <Sky
         distance={450000}
         sunPosition={[0, -1, 0]} 
         inclination={0}
         azimuth={180}
+        turbidity={30} // Higher turbidity for urban smog effect
+        rayleigh={0.5}
       />
       
       {/* City model container */}
       <group ref={cityRef} />
       
-      {/* Ground plane - visible in case model fails to load */}
+      {/* Ground plane with neon grid - visible in case model fails to load */}
       <mesh rotation={[Math.PI / 2, 0, 0]} position={[0, -2, 0]} receiveShadow>
         <planeGeometry args={[200, 200]} />
-        <meshStandardMaterial color="#112233" side={THREE.DoubleSide} />
+        <meshStandardMaterial color="#05001E" side={THREE.DoubleSide} />
       </mesh>
+      
+      {/* Grid lines - cyberpunk staple */}
+      <gridHelper args={[200, 40, '#00FFFF', '#000033']} position={[0, -1.9, 0]} />
       
       {/* Origin marker for debugging */}
       {debugMode && (
@@ -349,27 +454,27 @@ const CityScene = () => {
         </mesh>
       )}
       
-      {/* Loading indicator */}
+      {/* Loading indicator - cyberpunk styled */}
       {!cityLoaded && (
         <group position={[0, 10, 0]}>
           <mesh>
             <sphereGeometry args={[1, 16, 16]} />
-            <meshBasicMaterial color="#FFFF00" />
-            <pointLight color="#FFFF00" intensity={2} distance={20} />
+            <meshBasicMaterial color="#FF00FF" />
+            <pointLight color="#FF00FF" intensity={3} distance={20} />
           </mesh>
           
-          {/* Loading progress bar - reuse objects */}
+          {/* Loading progress bar with neon colors */}
           <group position={[0, 3, 0]}>
             <mesh>
               <boxGeometry args={[10, 0.5, 0.5]} />
-              <meshBasicMaterial color="#333333" />
+              <meshBasicMaterial color="#05001E" />
             </mesh>
             <mesh 
               position={[-5 + (5 * loadingProgress), 0, 0]} 
               scale={progressBoxRef.current.set(loadingProgress * 10, 0.4, 0.6)}
             >
               <boxGeometry />
-              <meshBasicMaterial color="#00FFFF" />
+              <meshBasicMaterial color="#FF00FF" />
             </mesh>
           </group>
         </group>
