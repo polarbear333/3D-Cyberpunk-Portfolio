@@ -108,6 +108,48 @@ const CyberpunkCityScene = React.memo(() => {
         if (cityRef.current) {
           cityRef.current.add(model);
           
+          // Register with spatial manager for culling and optimization
+          if (window.spatialManager?.initialized) {
+            // Register the entire model first with general settings
+            window.spatialManager.registerObject(model, {
+              important: false, // City can be culled when far away
+              lod: true,       // Enable LOD for the city model
+              cullDistance: 800 // Large cull distance for the main city
+            });
+            
+            // Register individual buildings and objects with appropriate settings
+            model.traverse((object) => {
+              if (object.isMesh) {
+                let settings = {
+                  important: false,
+                  lod: true,
+                  cullDistance: 500
+                };
+                
+                // Customize settings based on object name/type
+                const name = object.name.toLowerCase();
+                
+                // Hotspots and important landmarks should never be culled
+                if (name.includes('hotspot') || name.includes('landmark') || name.includes('important')) {
+                  settings.important = true;
+                  settings.lod = false;
+                  settings.cullDistance = Infinity;
+                }
+                // Moving objects should be marked as dynamic
+                else if (name.includes('vehicle') || name.includes('drone') || name.includes('moving')) {
+                  settings.dynamic = true;
+                  settings.cullDistance = 300;
+                }
+                // Small details can be culled earlier
+                else if (name.includes('detail') || object.geometry.boundingSphere?.radius < 1) {
+                  settings.cullDistance = 200;
+                }
+                
+                window.spatialManager.registerObject(object, settings);
+              }
+            });
+          }
+          
           // Calculate bounds
           const boundingBox = new THREE.Box3().setFromObject(model);
           const size = new THREE.Vector3();

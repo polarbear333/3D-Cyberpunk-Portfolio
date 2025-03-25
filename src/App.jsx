@@ -1,5 +1,5 @@
 import React, { Suspense, useEffect, useState, useRef, useCallback } from 'react';
-import { Canvas, useThree } from '@react-three/fiber';
+import { Canvas, useThree, useFrame } from '@react-three/fiber';
 import { Loader, OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
 import { useStore } from './state/useStore';
@@ -9,9 +9,7 @@ import useAudio from './hooks/useAudio';
 const LoadingScreen = React.lazy(() => import('./components/UI/LoadingScreen'));
 const Interface = React.lazy(() => import('./components/UI/Interface'));
 const DebugInfo = React.lazy(() => import('./components/UI/DebugInfo'));
-const CameraTracker = React.lazy(() => import('./components/UI/DebugInfo')).then(module => ({ 
-  default: module.CameraTracker 
-}));
+import { CameraTracker } from './components/UI/DebugInfo';
 const StatsPanel = React.lazy(() => import('./components/UI/StatsPanel'));
 
 // Scene Components - Critical components are not lazy loaded
@@ -69,12 +67,16 @@ const CameraInitializer = React.memo(() => {
 const SpatialManagerInitializer = React.memo(() => {
   const { scene, camera, invalidate } = useThree();
   const spatialManagerRef = useRef(null);
+  const debugMode = useStore(state => state.debugMode);
   
   // Create the spatial manager
   useEffect(() => {
     if (!spatialManagerRef.current) {
       spatialManagerRef.current = new SpatialManager(scene, camera);
       spatialManagerRef.current.initialize();
+      
+      // Store reference globally for access by other components
+      window.spatialManager = spatialManagerRef.current;
       
       console.log("Spatial Manager initialized");
       
@@ -85,6 +87,7 @@ const SpatialManagerInitializer = React.memo(() => {
     return () => {
       if (spatialManagerRef.current) {
         spatialManagerRef.current.dispose();
+        window.spatialManager = null;
       }
     };
   }, [scene, camera, invalidate]);

@@ -90,6 +90,16 @@ export const FlyingVehicles = ({ count = 10, speed = 1.0 }) => {
       // Add to container
       container.add(vehicleMesh);
       
+      // Register with spatial manager as a dynamic object
+      if (window.spatialManager?.initialized) {
+        window.spatialManager.registerObject(vehicleMesh, {
+          important: false,
+          dynamic: true, // Mark as dynamically moving object
+          lod: true,     // LOD can still be applied
+          cullDistance: 300 // Culling distance appropriate for vehicles
+        });
+      }
+      
       // Store reference data
       vehiclesData.current.push({
         mesh: vehicleMesh,
@@ -105,6 +115,11 @@ export const FlyingVehicles = ({ count = 10, speed = 1.0 }) => {
     
     return () => {
       // Clean up
+      vehiclesData.current.forEach(vehicle => {
+        if (window.spatialManager?.initialized) {
+          window.spatialManager.unregisterObject(vehicle.mesh);
+        }
+      });
       scene.remove(container);
     };
   }, [count, scene]);
@@ -198,8 +213,21 @@ export const CyberpunkRain = ({ intensity = 1.0 }) => {
       });
     }
     
+    // Register the rain container with SpatialManager for optimization
+    if (window.spatialManager?.initialized) {
+      window.spatialManager.registerObject(container, {
+        important: false, 
+        dynamic: true,   // Rain moves around with camera
+        lod: true,
+        cullDistance: Infinity // Don't cull rain completely
+      });
+    }
+    
     return () => {
       // Clean up
+      if (window.spatialManager?.initialized) {
+        window.spatialManager.unregisterObject(container);
+      }
       scene.remove(container);
     };
   }, [scene, camera, maxRaindrops, intensity]);
@@ -359,6 +387,15 @@ export const AnimatedBillboards = ({ count = 5 }) => {
       // Add to container
       container.add(billboard);
       
+      // Register billboard with SpatialManager
+      if (window.spatialManager?.initialized) {
+        window.spatialManager.registerObject(billboard, {
+          important: false,
+          lod: true,
+          cullDistance: 400 // Billboards should be visible from far away
+        });
+      }
+      
       // Create canvas for dynamic text
       const canvas = document.createElement('canvas');
       canvas.width = 512;
@@ -418,6 +455,12 @@ export const AnimatedBillboards = ({ count = 5 }) => {
     
     return () => {
       // Clean up
+      if (window.spatialManager?.initialized) {
+        billboardsData.current.forEach(data => {
+          window.spatialManager.unregisterObject(data.billboard);
+          window.spatialManager.unregisterObject(data.textPlane);
+        });
+      }
       scene.remove(container);
     };
   }, [count, scene, adTexts, slogans]);

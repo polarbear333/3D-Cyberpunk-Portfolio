@@ -12,7 +12,11 @@ const DebugInfo = () => {
     triangles: 0,
     textures: 0,
     geometries: 0,
-    cameraPos: [0, 0, 0]
+    cameraPos: [0, 0, 0],
+    // SpatialManager metrics
+    culledObjects: 0,
+    visibleObjects: 0,
+    lodChanges: 0
   });
   
   // FPS calculation
@@ -54,6 +58,11 @@ const DebugInfo = () => {
         let textures = 0;
         let geometries = 0;
         
+        // Get SpatialManager metrics if available
+        let culledObjects = 0;
+        let visibleObjects = 0;
+        let lodChanges = 0;
+        
         try {
           const rendererInfo = window.renderer?.info;
           if (rendererInfo) {
@@ -62,8 +71,16 @@ const DebugInfo = () => {
             textures = rendererInfo.memory?.textures || 0;
             geometries = rendererInfo.memory?.geometries || 0;
           }
+          
+          // Get SpatialManager metrics
+          if (window.spatialManager?.initialized) {
+            const spatialMetrics = window.spatialManager.getPerformanceMetrics();
+            culledObjects = spatialMetrics.culledObjects || 0;
+            visibleObjects = spatialMetrics.visibleObjects || 0;
+            lodChanges = spatialMetrics.lodChanges || 0;
+          }
         } catch (e) {
-          console.warn("Could not get renderer info");
+          console.warn("Could not get renderer or SpatialManager info");
         }
         
         setInfo(prev => ({
@@ -72,7 +89,11 @@ const DebugInfo = () => {
           drawCalls,
           triangles,
           textures,
-          geometries
+          geometries,
+          // Add SpatialManager metrics
+          culledObjects,
+          visibleObjects,
+          lodChanges
         }));
         
         setFrames(0);
@@ -133,6 +154,17 @@ const DebugInfo = () => {
         
         <div>Camera:</div>
         <div>({info.cameraPos[0]}, {info.cameraPos[1]}, {info.cameraPos[2]})</div>
+        
+        <div className="mt-2 font-bold text-cyan-400 col-span-2">Spatial Manager:</div>
+        
+        <div>Visible Objects:</div>
+        <div>{info.visibleObjects}</div>
+        
+        <div>Culled Objects:</div>
+        <div>{info.culledObjects}</div>
+        
+        <div>LOD Changes:</div>
+        <div>{info.lodChanges}</div>
         
         <div className="mt-2 font-bold text-cyan-400 col-span-2">Render Stats:</div>
         

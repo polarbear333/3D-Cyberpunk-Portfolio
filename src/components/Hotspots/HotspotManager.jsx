@@ -19,6 +19,24 @@ const Hotspot = ({ id, position, title, color, projectData, audio }) => {
   useEffect(() => {
     if (!hotspotRef.current) return;
     
+    // Register with SpatialManager
+    if (window.spatialManager?.initialized) {
+      window.spatialManager.registerObject(hotspotRef.current, {
+        important: true, // Hotspots are important interactive elements
+        lod: false,      // No LOD for interactive elements 
+        cullDistance: Infinity // Never completely cull interactive hotspots
+      });
+      
+      // Also register the marker if it exists
+      if (markerRef.current) {
+        window.spatialManager.registerObject(markerRef.current, {
+          important: true,
+          lod: false,
+          cullDistance: Infinity
+        });
+      }
+    }
+    
     // Floating animation
     gsap.to(hotspotRef.current.position, {
       y: position[1] + 1,
@@ -48,6 +66,16 @@ const Hotspot = ({ id, position, title, color, projectData, audio }) => {
         repeat: -1
       });
     }
+    
+    return () => {
+      // Unregister from SpatialManager when unmounted
+      if (window.spatialManager?.initialized) {
+        window.spatialManager.unregisterObject(hotspotRef.current);
+        if (markerRef.current) {
+          window.spatialManager.unregisterObject(markerRef.current);
+        }
+      }
+    };
   }, [position, isActive]);
   
   // Handle hover state

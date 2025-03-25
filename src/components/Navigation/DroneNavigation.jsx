@@ -97,6 +97,15 @@ const DroneNavigation = React.memo(({ audio }) => {
       // Add to ref
       droneModelRef.current.add(model);
       
+      // Register drone with spatial manager as dynamic object 
+      if (window.spatialManager?.initialized) {
+        window.spatialManager.registerObject(model, {
+          important: true, // Drone is important and never gets culled
+          dynamic: true,   // Drone is dynamic
+          lod: false       // No LOD for the drone
+        });
+      }
+      
       // Trigger a render
       invalidate();
     }
@@ -104,6 +113,11 @@ const DroneNavigation = React.memo(({ audio }) => {
     return () => {
       // Clean up resources
       if (droneModelRef.current) {
+        // Unregister from spatial manager
+        if (window.spatialManager?.initialized) {
+          window.spatialManager.unregisterObject(droneModelRef.current);
+        }
+        
         while (droneModelRef.current.children.length > 0) {
           const child = droneModelRef.current.children[0];
           if (child.material) {
@@ -277,8 +291,34 @@ const DroneNavigation = React.memo(({ audio }) => {
       // Scale direction vector
       directionVec.multiplyScalar(speed);
       
-      // Add to current position
-      tempVec3.add(directionVec);
+      // Create a proposed new position
+      const proposedPosition = tempVec3.clone().add(directionVec);
+      
+      // Check for collisions using SpatialManager if available
+      if (window.spatialManager?.initialized) {
+        const collisionResult = window.spatialManager.checkCollisions(
+          tempVec3,  // Current position
+          directionVec,  // Current velocity/direction
+          0.5  // Collision radius
+        );
+        
+        if (collisionResult.hasCollision) {
+          // Use the collision-adjusted position and velocity
+          tempVec3.copy(collisionResult.newPosition);
+          directionVec.copy(collisionResult.newVelocity);
+          
+          // Play collision sound if available
+          if (audio?.isInitialized && soundEnabled) {
+            audio.playSound('hover', { volume: 0.4 });
+          }
+        } else {
+          // No collision, use the proposed position
+          tempVec3.copy(proposedPosition);
+        }
+      } else {
+        // SpatialManager not available, use the proposed position
+        tempVec3.copy(proposedPosition);
+      }
       
       // Update drone position - avoid creating new Vector3
       updateDronePosition(tempVec3);
