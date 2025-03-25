@@ -39,7 +39,7 @@ const CyberpunkCityScene = React.memo(() => {
   const enhancer = useMemo(() => new CyberpunkEnhancer(), []);
   
   // Create resource manager - memoized for stability 
-  const resourceManager = useMemo(() => createResourceManager(gl), [gl]);
+  const resourceManagerObj = useMemo(() => createResourceManager(gl), [gl]);
   
   // Generate environment map
   useEffect(() => {
@@ -75,6 +75,9 @@ const CyberpunkCityScene = React.memo(() => {
     console.log("Loading city model with enhanced cyberpunk styling...");
     setLoading(true);
     
+    // Get access to the manager instance
+    const resourceManager = resourceManagerObj.manager;
+    
     // Configure resource manager
     resourceManager.setProgressCallback((progress) => {
       setLoadingProgress(progress);
@@ -85,7 +88,7 @@ const CyberpunkCityScene = React.memo(() => {
       // Process the loaded model
       try {
         // Get model from cache
-        const model = resourceManager.manager.cache.models['/models/cybercity/scene.gltf']?.scene;
+        const model = resourceManager.cache.models['/models/cybercity/scene.gltf']?.scene;
         
         if (!model) {
           console.error("Failed to load city model from resource manager");
@@ -182,13 +185,13 @@ const CyberpunkCityScene = React.memo(() => {
     });
     
     // Load model
-    resourceManager.manager.loadModel('/models/cybercity/scene.gltf', {
+    resourceManager.loadModel('/models/cybercity/scene.gltf', {
       optimizeMaterials: true,
       emissiveObjects: ['neon', 'light', 'glow', 'sign', 'led', 'emit', 'window'],
       debugName: 'cybercity'
     });
     
-  }, [cityLoaded, setLoading, setCityBounds, invalidate, enhancer, environmentMap, resourceManager]);
+  }, [cityLoaded, setLoading, setCityBounds, invalidate, enhancer, environmentMap, resourceManagerObj]);
   
   // Trigger animation sequences - memoized handler
   const startRandomAnimations = useCallback(() => {
