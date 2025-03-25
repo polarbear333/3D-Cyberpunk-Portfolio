@@ -3,7 +3,7 @@ import * as THREE from 'three';
 /**
  * CyberpunkEnhancer provides utilities for enhancing 3D models with a cyberpunk aesthetic
  */
-class CyberpunkEnhancer {
+export class CyberpunkEnhancer {
   constructor() {
     // Define cyberpunk color palette with bright neon colors
     this.colors = {
@@ -125,41 +125,9 @@ class CyberpunkEnhancer {
   createCyberpunkEnvMap() {
     // Create a procedural cubemap texture
     const size = 256;
-    const cubeRenderTarget = new THREE.WebGLCubeRenderTarget(size, {
-      format: THREE.RGBAFormat,
-      generateMipmaps: true,
-      minFilter: THREE.LinearMipmapLinearFilter
-    });
     
-    // Generate each face of the cubemap with appropriate cyberpunk gradients and elements
-    // This is a simplified version - in production you might want to create more detailed textures
-    const loader = new THREE.CubeTextureLoader();
-    const paths = [
-      // Create paths to 6 images for the 6 faces of the cube
-      // Right, Left, Top, Bottom, Front, Back
-      '/textures/cyberpunk/px.jpg',
-      '/textures/cyberpunk/nx.jpg',
-      '/textures/cyberpunk/py.jpg',
-      '/textures/cyberpunk/ny.jpg',
-      '/textures/cyberpunk/pz.jpg',
-      '/textures/cyberpunk/nz.jpg'
-    ];
-    
-    // Create a fallback procedural texture in case image loading fails
-    const envMap = this.createProceduralEnvMap(size);
-    
-    // Try to load images first
-    try {
-      return loader.load(paths, () => {
-        console.log("Environment map loaded successfully");
-      }, undefined, () => {
-        console.warn("Environment map loading failed, using procedural fallback");
-        return envMap;
-      });
-    } catch (error) {
-      console.warn("Environment map creation error:", error);
-      return envMap;
-    }
+    // Create a fallback procedural texture
+    return this.createProceduralEnvMap(size);
   }
 
   /**
@@ -169,16 +137,20 @@ class CyberpunkEnhancer {
    * @returns {THREE.Texture} Procedural environment map
    */
   createProceduralEnvMap(size = 256) {
-    // Create a scene to render
+    // Create a cubemap render target - This line was missing proper initialization
+    const cubeRenderTarget = new THREE.WebGLCubeRenderTarget(size, {
+      format: THREE.RGBAFormat,
+      generateMipmaps: true,
+      minFilter: THREE.LinearMipmapLinearFilter
+    });
+    
+    // Create a scene to render into the cubemap
     const scene = new THREE.Scene();
     
-    // Create a skybox geometry
-    const skyGeometry = new THREE.BoxGeometry(10, 10, 10);
+    // Create a cubemap camera
+    const cubeCamera = new THREE.CubeCamera(0.1, 1000, cubeRenderTarget);
     
-    // Create materials for each side with cyberpunk gradients
-    const materialArray = [];
-    
-    // Define color gradients for each face of the cube
+    // Define color gradients for each face
     const gradients = [
       { top: '#050038', bottom: '#5000FF' }, // Right face
       { top: '#050038', bottom: '#FF00FF' }, // Left face
@@ -188,507 +160,50 @@ class CyberpunkEnhancer {
       { top: '#050038', bottom: '#00FFFF' }  // Back face
     ];
     
-    // Create materials with canvas-generated gradients
-    for (let i = 0; i < 6; i++) {
+    // Create skybox with procedural textures
+    const skyboxGeo = new THREE.BoxGeometry(900, 900, 900);
+    const skyboxMats = gradients.map((gradient, i) => {
+      // Create canvas for each face
       const canvas = document.createElement('canvas');
-      canvas.width = size;
-      canvas.height = size;
+      canvas.width = 256;
+      canvas.height = 256;
       const ctx = canvas.getContext('2d');
       
       // Create gradient
-      const grd = ctx.createLinearGradient(0, 0, 0, size);
-      grd.addColorStop(0, gradients[i].top);
-      grd.addColorStop(1, gradients[i].bottom);
+      const grd = ctx.createLinearGradient(0, 0, 0, 256);
+      grd.addColorStop(0, gradient.top);
+      grd.addColorStop(1, gradient.bottom);
       
-      // Fill with gradient
+      // Fill background
       ctx.fillStyle = grd;
-      ctx.fillRect(0, 0, size, size);
-      
-      // Add grid lines for cyberpunk feel
-      ctx.strokeStyle = i % 2 === 0 ? '#00FFFF44' : '#FF10F044';
-      ctx.lineWidth = 1;
-      
-      // Draw grid
-      const gridSize = 16;
-      for (let j = 0; j <= size; j += size / gridSize) {
-        ctx.beginPath();
-        ctx.moveTo(0, j);
-        ctx.lineTo(size, j);
-        ctx.stroke();
-        
-        ctx.beginPath();
-        ctx.moveTo(j, 0);
-        ctx.lineTo(j, size);
-        ctx.stroke();
-      }
-      
-      // Add random light dots
-      ctx.fillStyle = i % 2 === 0 ? '#00FFFF' : '#FF10F0';
-      for (let j = 0; j < 50; j++) {
-        const x = Math.random() * size;
-        const y = Math.random() * size;
-        const radius = Math.random() * 2 + 1;
-        ctx.beginPath();
-        ctx.arc(x, y, radius, 0, Math.PI * 2);
-        ctx.fill();
-      }
+      ctx.fillRect(0, 0, 256, 256);
       
       // Create texture from canvas
       const texture = new THREE.CanvasTexture(canvas);
-      texture.needsUpdate = true;
       
-      materialArray.push(new THREE.MeshBasicMaterial({
+      return new THREE.MeshBasicMaterial({
         map: texture,
         side: THREE.BackSide
-      }));
-    }
+      });
+    });
     
     // Create skybox mesh
-    const skybox = new THREE.Mesh(skyGeometry, materialArray);
+    const skybox = new THREE.Mesh(skyboxGeo, skyboxMats);
     scene.add(skybox);
     
-    // Set up camera and renderer
-    const camera = new THREE.CubeCamera(0.1, 10, cubeRenderTarget);
-    camera.renderTarget.texture.encoding = THREE.sRGBEncoding;
-    
-    // Position cube camera in the scene
-    camera.position.set(0, 0, 0);
-    camera.update(renderer, scene);
+    // Position camera and update the cubemap - Use a fallback renderer if needed
+    cubeCamera.position.set(0, 0, 0);
+    if (window.renderer) {
+      cubeCamera.update(window.renderer, scene);
+    } else {
+      // Create a temporary renderer if none is available
+      const tempRenderer = new THREE.WebGLRenderer({ antialias: false });
+      tempRenderer.setSize(size, size);
+      cubeCamera.update(tempRenderer, scene);
+      tempRenderer.dispose();
+    }
     
     return cubeRenderTarget.texture;
-  }
-
-  /**
-   * Enhance materials based on determined type
-   * 
-   * @param {THREE.Material} material - Material to enhance
-   * @param {string} type - Material type
-   * @param {Object} object - The 3D object
-   * @returns {THREE.Material} Enhanced material
-   */
-  enhanceMaterial(material, type, object) {
-    // Skip if we've already processed this material
-    if (this.processedMaterials.has(material.uuid)) {
-      return material;
-    }
-    
-    // Create a clone to avoid affecting other objects
-    const enhancedMaterial = material.clone();
-    this.processedMaterials.add(enhancedMaterial.uuid);
-    
-    // Apply type-specific enhancements
-    switch (type) {
-      case 'building':
-        this.enhanceBuildingMaterial(enhancedMaterial, object);
-        break;
-      case 'street':
-        this.enhanceStreetMaterial(enhancedMaterial, object);
-        break;
-      case 'terrain':
-        this.enhanceTerrainMaterial(enhancedMaterial, object);
-        break;
-      case 'sidewalk':
-        this.enhanceSidewalkMaterial(enhancedMaterial, object);
-        break;
-      case 'window':
-        this.enhanceWindowMaterial(enhancedMaterial, object);
-        break;
-      case 'neon':
-        this.enhanceNeonMaterial(enhancedMaterial, object);
-        break;
-      case 'hologram':
-        this.enhanceHologramMaterial(enhancedMaterial, object);
-        break;
-      case 'vehicle':
-        this.enhanceVehicleMaterial(enhancedMaterial, object);
-        break;
-      case 'billboard':
-        this.enhanceBillboardMaterial(enhancedMaterial, object);
-        break;
-      default:
-        this.enhanceGenericMaterial(enhancedMaterial, object);
-    }
-    
-    // Mark material as needing update
-    enhancedMaterial.needsUpdate = true;
-    
-    return enhancedMaterial;
-  }
-
-  /**
-   * Apply building-specific enhancements
-   */
-  enhanceBuildingMaterial(material, object) {
-    // Choose between dark blue and dark purple for variation
-    const color = Math.random() > 0.5 ? this.colors.darkBlue : this.colors.darkPurple;
-    
-    if (material.color) {
-      // Adjust color keeping some of the original color for variety
-      material.color.lerp(color, 0.7);
-    }
-    
-    // Adjust material properties for a more metallic look
-    if (material.roughness !== undefined) {
-      material.roughness = Math.max(0.4, material.roughness - 0.2);
-    }
-    
-    if (material.metalness !== undefined) {
-      material.metalness = Math.min(0.7, material.metalness + 0.3);
-    }
-    
-    // Add subtle emissive for dark parts of buildings - cyberpunk often has subtle glow
-    if (material.emissive && object.position.y > 10) {
-      // Taller buildings get subtle window highlights
-      const baseEmissive = Math.random() > 0.7 ? this.colors.neonBlue : this.colors.neonPurple;
-      material.emissive.lerp(baseEmissive, 0.02); // Very subtle
-      material.emissiveIntensity = 0.05;
-    }
-  }
-
-  /**
-   * Apply street-specific enhancements
-   */
-  enhanceStreetMaterial(material, object) {
-    if (material.color) {
-      material.color.copy(this.colors.roadColor);
-    }
-    
-    // Streets are somewhat reflective when wet (cyberpunk aesthetic often has wet streets)
-    if (material.roughness !== undefined) {
-      material.roughness = 0.7; // Semi-glossy for wet look
-    }
-    
-    if (material.metalness !== undefined) {
-      material.metalness = 0.4; // Slightly reflective
-    }
-    
-    // Add subtle emissive for street lights reflection
-    if (material.emissive) {
-      material.emissive.set(0.01, 0.01, 0.03); // Very subtle blue
-      material.emissiveIntensity = 0.05;
-    }
-  }
-
-  /**
-   * Apply terrain-specific enhancements
-   */
-  enhanceTerrainMaterial(material, object) {
-    if (material.color) {
-      material.color.copy(this.colors.terrainColor);
-    }
-    
-    // Natural terrain is less reflective
-    if (material.roughness !== undefined) {
-      material.roughness = 0.8;
-    }
-    
-    if (material.metalness !== undefined) {
-      material.metalness = 0.2;
-    }
-  }
-
-  /**
-   * Apply sidewalk-specific enhancements
-   */
-  enhanceSidewalkMaterial(material, object) {
-    if (material.color) {
-      material.color.copy(this.colors.sidewalkColor);
-    }
-    
-    // Sidewalks have some reflection from puddles
-    if (material.roughness !== undefined) {
-      material.roughness = 0.75;
-    }
-    
-    if (material.metalness !== undefined) {
-      material.metalness = 0.3;
-    }
-    
-    // Add subtle glow from nearby neon
-    if (material.emissive) {
-      material.emissive.set(0.01, 0.01, 0.02);
-      material.emissiveIntensity = 0.05;
-    }
-  }
-
-  /**
-   * Apply window-specific enhancements
-   */
-  enhanceWindowMaterial(material, object) {
-    // Determine which color scheme to use for this window
-    const neonColors = [
-      this.colors.neonBlue,
-      this.colors.neonPink,
-      this.colors.neonPurple,
-      this.colors.neonYellow,
-      this.colors.neonGreen
-    ];
-    
-    // Select color based on object name or random choice
-    let emissiveColor;
-    const name = object.name.toLowerCase();
-    
-    if (name.includes('blue')) {
-      emissiveColor = this.colors.neonBlue;
-    } else if (name.includes('pink') || name.includes('red')) {
-      emissiveColor = this.colors.neonPink;
-    } else if (name.includes('purple')) {
-      emissiveColor = this.colors.neonPurple;
-    } else if (name.includes('yellow')) {
-      emissiveColor = this.colors.neonYellow;
-    } else if (name.includes('green')) {
-      emissiveColor = this.colors.neonGreen;
-    } else {
-      // Random color
-      emissiveColor = neonColors[Math.floor(Math.random() * neonColors.length)];
-    }
-    
-    // Windows should be bright but not overwhelming
-    if (material.emissive) {
-      material.emissive.copy(emissiveColor);
-      material.emissiveIntensity = 1.8;
-    }
-    
-    // Add to animated materials
-    this.animatedMaterials.push({
-      material: material,
-      position: [object.position.x, object.position.y, object.position.z],
-      phase: Math.random() * Math.PI * 2,
-      baseIntensity: 1.8,
-      color: emissiveColor.clone()
-    });
-    
-    // Make sure windows look glassy
-    if (material.roughness !== undefined) {
-      material.roughness = 0.4;
-    }
-    
-    if (material.metalness !== undefined) {
-      material.metalness = 0.8;
-    }
-    
-    // Windows may have some transparency
-    if (Math.random() > 0.7) {
-      material.transparent = true;
-      material.opacity = 0.7;
-    }
-  }
-
-  /**
-   * Apply neon-specific enhancements
-   */
-  enhanceNeonMaterial(material, object) {
-    // Neon signs and lights should be extremely bright
-    const name = object.name.toLowerCase();
-    let neonColor;
-    
-    // Color selection based on name or pattern
-    if (name.includes('blue')) {
-      neonColor = this.colors.neonBlue;
-    } else if (name.includes('pink') || name.includes('red')) {
-      neonColor = this.colors.neonPink;
-    } else if (name.includes('purple')) {
-      neonColor = this.colors.neonPurple;
-    } else if (name.includes('yellow')) {
-      neonColor = this.colors.neonYellow;
-    } else if (name.includes('green')) {
-      neonColor = this.colors.neonGreen;
-    } else if (name.includes('orange')) {
-      neonColor = this.colors.neonOrange;
-    } else {
-      // Random neon color for variety
-      const neonColors = [
-        this.colors.neonBlue,
-        this.colors.neonPink,
-        this.colors.neonPurple,
-        this.colors.neonGreen,
-        this.colors.neonYellow,
-        this.colors.neonOrange
-      ];
-      neonColor = neonColors[Math.floor(Math.random() * neonColors.length)];
-    }
-    
-    // Set material properties
-    if (material.color) {
-      material.color.copy(neonColor);
-    }
-    
-    if (material.emissive) {
-      material.emissive.copy(neonColor);
-      material.emissiveIntensity = 2.5; // Very bright
-    }
-    
-    // Most neon signs are glossy
-    if (material.roughness !== undefined) {
-      material.roughness = 0.3;
-    }
-    
-    if (material.metalness !== undefined) {
-      material.metalness = 0.7;
-    }
-    
-    // Add to animated materials with dynamic pulsing
-    this.animatedMaterials.push({
-      material: material,
-      position: [object.position.x, object.position.y, object.position.z],
-      phase: Math.random() * Math.PI * 2,
-      baseIntensity: 2.5,
-      color: neonColor.clone(),
-      // Add special animation behavior flag
-      isNeon: true
-    });
-  }
-
-  /**
-   * Apply hologram-specific enhancements
-   */
-  enhanceHologramMaterial(material, object) {
-    // Holograms should be transparent and glowing
-    material.transparent = true;
-    material.opacity = 0.7;
-    
-    const hologramColor = this.colors.neonBlue.clone().lerp(this.colors.neonPurple, 0.5);
-    
-    if (material.color) {
-      material.color.copy(hologramColor);
-    }
-    
-    if (material.emissive) {
-      material.emissive.copy(hologramColor);
-      material.emissiveIntensity = 1.2;
-    }
-    
-    // Holograms have no roughness or metalness
-    if (material.roughness !== undefined) {
-      material.roughness = 0.1;
-    }
-    
-    if (material.metalness !== undefined) {
-      material.metalness = 0.9;
-    }
-    
-    // Add to animated materials with special hologram-specific animation
-    this.animatedMaterials.push({
-      material: material,
-      position: [object.position.x, object.position.y, object.position.z],
-      phase: Math.random() * Math.PI * 2,
-      baseIntensity: 1.2,
-      color: hologramColor.clone(),
-      isHologram: true
-    });
-  }
-
-  /**
-   * Apply vehicle-specific enhancements
-   */
-  enhanceVehicleMaterial(material, object) {
-    // Vehicles in cyberpunk are often sleek and metallic with neon lights
-    if (material.roughness !== undefined) {
-      material.roughness = 0.3; // Glossy
-    }
-    
-    if (material.metalness !== undefined) {
-      material.metalness = 0.8; // Very metallic
-    }
-    
-    // Add neon accents to vehicles
-    if (material.emissive && Math.random() > 0.6) {
-      const vehicleColors = [
-        this.colors.neonBlue,
-        this.colors.neonPink,
-        this.colors.neonGreen,
-        this.colors.neonOrange
-      ];
-      
-      const vehicleColor = vehicleColors[Math.floor(Math.random() * vehicleColors.length)];
-      material.emissive.copy(vehicleColor);
-      material.emissiveIntensity = 1.5;
-      
-      // Add to animated materials
-      this.animatedMaterials.push({
-        material: material,
-        position: [object.position.x, object.position.y, object.position.z],
-        phase: Math.random() * Math.PI * 2,
-        baseIntensity: 1.5,
-        color: vehicleColor.clone(),
-        isVehicle: true
-      });
-    }
-  }
-
-  /**
-   * Apply billboard-specific enhancements
-   */
-  enhanceBillboardMaterial(material, object) {
-    // Billboards should be bright and attention-grabbing
-    // Alternate between different neon colors for variety
-    const billboardColors = [
-      this.colors.neonPink,
-      this.colors.neonBlue,
-      this.colors.neonGreen,
-      this.colors.neonYellow,
-      this.colors.neonPurple
-    ];
-    
-    const billboardColor = billboardColors[Math.floor(Math.random() * billboardColors.length)];
-    
-    if (material.color) {
-      material.color.copy(billboardColor);
-    }
-    
-    if (material.emissive) {
-      material.emissive.copy(billboardColor);
-      material.emissiveIntensity = 2.0;
-    }
-    
-    // Add to animated materials with billboard-specific animation
-    this.animatedMaterials.push({
-      material: material,
-      position: [object.position.x, object.position.y, object.position.z],
-      phase: Math.random() * Math.PI * 2,
-      baseIntensity: 2.0,
-      color: billboardColor.clone(),
-      isBillboard: true
-    });
-  }
-
-  /**
-   * Apply enhancements to generic materials
-   */
-  enhanceGenericMaterial(material, object) {
-    // Apply generic cyberpunk enhancements to unidentified materials
-    
-    // Slightly improve reflectivity
-    if (material.roughness !== undefined) {
-      material.roughness = Math.max(0.3, material.roughness - 0.2);
-    }
-    
-    if (material.metalness !== undefined) {
-      material.metalness = Math.min(0.7, material.metalness + 0.2);
-    }
-    
-    // Add subtle emissive effect to some objects
-    if (material.emissive && Math.random() > 0.7) {
-      const genericColors = [
-        this.colors.neonBlue,
-        this.colors.neonPink,
-        this.colors.neonPurple,
-        this.colors.neonGreen
-      ];
-      
-      const emissiveColor = genericColors[Math.floor(Math.random() * genericColors.length)];
-      material.emissive.lerp(emissiveColor, 0.3);
-      material.emissiveIntensity = 0.5;
-      
-      // Add to animated materials with subtle animation
-      this.animatedMaterials.push({
-        material: material,
-        position: [object.position.x, object.position.y, object.position.z],
-        phase: Math.random() * Math.PI * 2,
-        baseIntensity: 0.5,
-        color: emissiveColor.clone()
-      });
-    }
   }
 
   /**
@@ -807,6 +322,408 @@ class CyberpunkEnhancer {
     
     return anyChanges;
   }
-}
+  
+  /**
+   * Enhance materials based on determined type
+   * 
+   * @param {THREE.Material} material - Material to enhance
+   * @param {string} type - Material type
+   * @param {Object} object - The 3D object
+   * @returns {THREE.Material} Enhanced material
+   */
+  enhanceMaterial(material, type, object) {
+    // Skip if we've already processed this material
+    if (this.processedMaterials.has(material.uuid)) {
+      return material;
+    }
+    
+    // Create a clone to avoid affecting other objects
+    const enhancedMaterial = material.clone();
+    this.processedMaterials.add(enhancedMaterial.uuid);
+    
+    // Apply type-specific enhancements
+    switch (type) {
+      case 'building':
+        this.enhanceBuildingMaterial(enhancedMaterial, object);
+        break;
+      case 'street':
+        this.enhanceStreetMaterial(enhancedMaterial, object);
+        break;
+      case 'terrain':
+        this.enhanceTerrainMaterial(enhancedMaterial, object);
+        break;
+      case 'sidewalk':
+        this.enhanceSidewalkMaterial(enhancedMaterial, object);
+        break;
+      case 'window':
+        this.enhanceWindowMaterial(enhancedMaterial, object);
+        break;
+      case 'neon':
+        this.enhanceNeonMaterial(enhancedMaterial, object);
+        break;
+      case 'hologram':
+        this.enhanceHologramMaterial(enhancedMaterial, object);
+        break;
+      case 'vehicle':
+        this.enhanceVehicleMaterial(enhancedMaterial, object);
+        break;
+      case 'billboard':
+        this.enhanceBillboardMaterial(enhancedMaterial, object);
+        break;
+      default:
+        this.enhanceGenericMaterial(enhancedMaterial, object);
+    }
+    
+    // Mark material as needing update
+    enhancedMaterial.needsUpdate = true;
+    
+    return enhancedMaterial;
+  }
 
-export default CyberpunkEnhancer;
+  // Material enhancement methods
+  enhanceBuildingMaterial(material, object) {
+    // Choose between dark blue and dark purple for variation
+    const color = Math.random() > 0.5 ? this.colors.darkBlue : this.colors.darkPurple;
+    
+    if (material.color) {
+      // Adjust color keeping some of the original color for variety
+      material.color.lerp(color, 0.7);
+    }
+    
+    // Adjust material properties for a more metallic look
+    if (material.roughness !== undefined) {
+      material.roughness = Math.max(0.4, material.roughness - 0.2);
+    }
+    
+    if (material.metalness !== undefined) {
+      material.metalness = Math.min(0.7, material.metalness + 0.3);
+    }
+    
+    // Add subtle emissive for dark parts of buildings - cyberpunk often has subtle glow
+    if (material.emissive && object.position.y > 10) {
+      // Taller buildings get subtle window highlights
+      const baseEmissive = Math.random() > 0.7 ? this.colors.neonBlue : this.colors.neonPurple;
+      material.emissive.lerp(baseEmissive, 0.02); // Very subtle
+      material.emissiveIntensity = 0.05;
+    }
+  }
+
+  enhanceStreetMaterial(material, object) {
+    if (material.color) {
+      material.color.copy(this.colors.roadColor);
+    }
+    
+    // Streets are somewhat reflective when wet (cyberpunk aesthetic often has wet streets)
+    if (material.roughness !== undefined) {
+      material.roughness = 0.7; // Semi-glossy for wet look
+    }
+    
+    if (material.metalness !== undefined) {
+      material.metalness = 0.4; // Slightly reflective
+    }
+    
+    // Add subtle emissive for street lights reflection
+    if (material.emissive) {
+      material.emissive.set(0.01, 0.01, 0.03); // Very subtle blue
+      material.emissiveIntensity = 0.05;
+    }
+  }
+
+  enhanceTerrainMaterial(material, object) {
+    if (material.color) {
+      material.color.copy(this.colors.terrainColor);
+    }
+    
+    // Natural terrain is less reflective
+    if (material.roughness !== undefined) {
+      material.roughness = 0.8;
+    }
+    
+    if (material.metalness !== undefined) {
+      material.metalness = 0.2;
+    }
+  }
+
+  enhanceSidewalkMaterial(material, object) {
+    if (material.color) {
+      material.color.copy(this.colors.sidewalkColor);
+    }
+    
+    // Sidewalks have some reflection from puddles
+    if (material.roughness !== undefined) {
+      material.roughness = 0.75;
+    }
+    
+    if (material.metalness !== undefined) {
+      material.metalness = 0.3;
+    }
+    
+    // Add subtle glow from nearby neon
+    if (material.emissive) {
+      material.emissive.set(0.01, 0.01, 0.02);
+      material.emissiveIntensity = 0.05;
+    }
+  }
+
+  enhanceWindowMaterial(material, object) {
+    // Determine which color scheme to use for this window
+    const neonColors = [
+      this.colors.neonBlue,
+      this.colors.neonPink,
+      this.colors.neonPurple,
+      this.colors.neonYellow,
+      this.colors.neonGreen
+    ];
+    
+    // Select color based on object name or random choice
+    let emissiveColor;
+    const name = object.name.toLowerCase();
+    
+    if (name.includes('blue')) {
+      emissiveColor = this.colors.neonBlue;
+    } else if (name.includes('pink') || name.includes('red')) {
+      emissiveColor = this.colors.neonPink;
+    } else if (name.includes('purple')) {
+      emissiveColor = this.colors.neonPurple;
+    } else if (name.includes('yellow')) {
+      emissiveColor = this.colors.neonYellow;
+    } else if (name.includes('green')) {
+      emissiveColor = this.colors.neonGreen;
+    } else {
+      // Random color
+      emissiveColor = neonColors[Math.floor(Math.random() * neonColors.length)];
+    }
+    
+    // Windows should be bright but not overwhelming
+    if (material.emissive) {
+      material.emissive.copy(emissiveColor);
+      material.emissiveIntensity = 1.8;
+    }
+    
+    // Add to animated materials
+    this.animatedMaterials.push({
+      material: material,
+      position: [object.position.x, object.position.y, object.position.z],
+      phase: Math.random() * Math.PI * 2,
+      baseIntensity: 1.8,
+      color: emissiveColor.clone()
+    });
+    
+    // Make sure windows look glassy
+    if (material.roughness !== undefined) {
+      material.roughness = 0.4;
+    }
+    
+    if (material.metalness !== undefined) {
+      material.metalness = 0.8;
+    }
+    
+    // Windows may have some transparency
+    if (Math.random() > 0.7) {
+      material.transparent = true;
+      material.opacity = 0.7;
+    }
+  }
+
+  enhanceNeonMaterial(material, object) {
+    // Neon signs and lights should be extremely bright
+    const name = object.name.toLowerCase();
+    let neonColor;
+    
+    // Color selection based on name or pattern
+    if (name.includes('blue')) {
+      neonColor = this.colors.neonBlue;
+    } else if (name.includes('pink') || name.includes('red')) {
+      neonColor = this.colors.neonPink;
+    } else if (name.includes('purple')) {
+      neonColor = this.colors.neonPurple;
+    } else if (name.includes('yellow')) {
+      neonColor = this.colors.neonYellow;
+    } else if (name.includes('green')) {
+      neonColor = this.colors.neonGreen;
+    } else if (name.includes('orange')) {
+      neonColor = this.colors.neonOrange;
+    } else {
+      // Random neon color for variety
+      const neonColors = [
+        this.colors.neonBlue,
+        this.colors.neonPink,
+        this.colors.neonPurple,
+        this.colors.neonGreen,
+        this.colors.neonYellow,
+        this.colors.neonOrange
+      ];
+      neonColor = neonColors[Math.floor(Math.random() * neonColors.length)];
+    }
+    
+    // Set material properties
+    if (material.color) {
+      material.color.copy(neonColor);
+    }
+    
+    if (material.emissive) {
+      material.emissive.copy(neonColor);
+      material.emissiveIntensity = 2.5; // Very bright
+    }
+    
+    // Most neon signs are glossy
+    if (material.roughness !== undefined) {
+      material.roughness = 0.3;
+    }
+    
+    if (material.metalness !== undefined) {
+      material.metalness = 0.7;
+    }
+    
+    // Add to animated materials with dynamic pulsing
+    this.animatedMaterials.push({
+      material: material,
+      position: [object.position.x, object.position.y, object.position.z],
+      phase: Math.random() * Math.PI * 2,
+      baseIntensity: 2.5,
+      color: neonColor.clone(),
+      // Add special animation behavior flag
+      isNeon: true
+    });
+  }
+
+  enhanceHologramMaterial(material, object) {
+    // Holograms should be transparent and glowing
+    material.transparent = true;
+    material.opacity = 0.7;
+    
+    const hologramColor = this.colors.neonBlue.clone().lerp(this.colors.neonPurple, 0.5);
+    
+    if (material.color) {
+      material.color.copy(hologramColor);
+    }
+    
+    if (material.emissive) {
+      material.emissive.copy(hologramColor);
+      material.emissiveIntensity = 1.2;
+    }
+    
+    // Holograms have no roughness or metalness
+    if (material.roughness !== undefined) {
+      material.roughness = 0.1;
+    }
+    
+    if (material.metalness !== undefined) {
+      material.metalness = 0.9;
+    }
+    
+    // Add to animated materials with special hologram-specific animation
+    this.animatedMaterials.push({
+      material: material,
+      position: [object.position.x, object.position.y, object.position.z],
+      phase: Math.random() * Math.PI * 2,
+      baseIntensity: 1.2,
+      color: hologramColor.clone(),
+      isHologram: true
+    });
+  }
+
+  enhanceVehicleMaterial(material, object) {
+    // Vehicles in cyberpunk are often sleek and metallic with neon lights
+    if (material.roughness !== undefined) {
+      material.roughness = 0.3; // Glossy
+    }
+    
+    if (material.metalness !== undefined) {
+      material.metalness = 0.8; // Very metallic
+    }
+    
+    // Add neon accents to vehicles
+    if (material.emissive && Math.random() > 0.6) {
+      const vehicleColors = [
+        this.colors.neonBlue,
+        this.colors.neonPink,
+        this.colors.neonGreen,
+        this.colors.neonOrange
+      ];
+      
+      const vehicleColor = vehicleColors[Math.floor(Math.random() * vehicleColors.length)];
+      material.emissive.copy(vehicleColor);
+      material.emissiveIntensity = 1.5;
+      
+      // Add to animated materials
+      this.animatedMaterials.push({
+        material: material,
+        position: [object.position.x, object.position.y, object.position.z],
+        phase: Math.random() * Math.PI * 2,
+        baseIntensity: 1.5,
+        color: vehicleColor.clone(),
+        isVehicle: true
+      });
+    }
+  }
+
+  enhanceBillboardMaterial(material, object) {
+    // Billboards should be bright and attention-grabbing
+    // Alternate between different neon colors for variety
+    const billboardColors = [
+      this.colors.neonPink,
+      this.colors.neonBlue,
+      this.colors.neonGreen,
+      this.colors.neonYellow,
+      this.colors.neonPurple
+    ];
+    
+    const billboardColor = billboardColors[Math.floor(Math.random() * billboardColors.length)];
+    
+    if (material.color) {
+      material.color.copy(billboardColor);
+    }
+    
+    if (material.emissive) {
+      material.emissive.copy(billboardColor);
+      material.emissiveIntensity = 2.0;
+    }
+    
+    // Add to animated materials with billboard-specific animation
+    this.animatedMaterials.push({
+      material: material,
+      position: [object.position.x, object.position.y, object.position.z],
+      phase: Math.random() * Math.PI * 2,
+      baseIntensity: 2.0,
+      color: billboardColor.clone(),
+      isBillboard: true
+    });
+  }
+
+  enhanceGenericMaterial(material, object) {
+    // Apply generic cyberpunk enhancements to unidentified materials
+    
+    // Slightly improve reflectivity
+    if (material.roughness !== undefined) {
+      material.roughness = Math.max(0.3, material.roughness - 0.2);
+    }
+    
+    if (material.metalness !== undefined) {
+      material.metalness = Math.min(0.7, material.metalness + 0.2);
+    }
+    
+    // Add subtle emissive effect to some objects
+    if (material.emissive && Math.random() > 0.7) {
+      const genericColors = [
+        this.colors.neonBlue,
+        this.colors.neonPink,
+        this.colors.neonPurple,
+        this.colors.neonGreen
+      ];
+      
+      const emissiveColor = genericColors[Math.floor(Math.random() * genericColors.length)];
+      material.emissive.lerp(emissiveColor, 0.3);
+      material.emissiveIntensity = 0.5;
+      
+      // Add to animated materials with subtle animation
+      this.animatedMaterials.push({
+        material: material,
+        position: [object.position.x, object.position.y, object.position.z],
+        phase: Math.random() * Math.PI * 2,
+        baseIntensity: 0.5,
+        color: emissiveColor.clone()
+      });
+    }
+  }
+}

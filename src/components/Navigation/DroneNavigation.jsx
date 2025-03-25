@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState, useMemo } from 'react';
+import React, { useRef, useEffect, useState, useMemo, useCallback } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls, useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
@@ -7,7 +7,7 @@ import { useStore } from '../../state/useStore';
 // Load the drone model
 const DRONE_MODEL_PATH = '/models/cyberdrone/drone.glb'; 
 
-const DroneNavigation = ({ audio }) => {
+const DroneNavigation = React.memo(({ audio }) => {
   const { 
     dronePosition, 
     updateDronePosition, 
@@ -74,11 +74,19 @@ const DroneNavigation = ({ audio }) => {
           // Optimize shadows
           child.castShadow = child.name.includes('body');
           child.receiveShadow = false;
+          
+          // Optimize materials
+          if (child.material) {
+            if (child.material.map) {
+              child.material.map.anisotropy = 4;
+            }
+            child.material.needsUpdate = true;
+          }
         }
       });
       
       // Set scale and position
-      model.scale.set(0.8, 0.8, 0.8);
+      model.scale.set(0.1, 0.1, 0.1);
       
       // Add drone light only once
       const droneLight = new THREE.PointLight('#00FFFF', lightIntensity.current, 10);
@@ -92,10 +100,33 @@ const DroneNavigation = ({ audio }) => {
       // Trigger a render
       invalidate();
     }
+    
+    return () => {
+      // Clean up resources
+      if (droneModelRef.current) {
+        while (droneModelRef.current.children.length > 0) {
+          const child = droneModelRef.current.children[0];
+          if (child.material) {
+            if (Array.isArray(child.material)) {
+              child.material.forEach(m => m.dispose());
+            } else {
+              child.material.dispose();
+            }
+          }
+          if (child.geometry) {
+            child.geometry.dispose();
+          }
+          droneModelRef.current.remove(child);
+        }
+      }
+      
+      // Reset propellers array
+      propellersRef.current = [];
+    };
   }, [droneModel, invalidate]);
   
-  // Handle mouse click for target navigation
-  const handleClick = React.useCallback((event) => {
+  // Handle mouse click for target navigation - memoized callback
+  const handleClick = useCallback((event) => {
     // Get mouse position in normalized device coordinates
     mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
     mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
@@ -294,11 +325,10 @@ const DroneNavigation = ({ audio }) => {
         enablePan={debugMode}
         target={[0, 10, 0]}
         // For on-demand rendering, we need to manually invoke updates
-        // The ControlsUpdater in App.jsx will handle the invalidation
         onChange={() => invalidate()}
       />
     </group>
   );
-};
+});
 
 export default DroneNavigation;

@@ -2,9 +2,9 @@ import * as THREE from 'three';
 
 /**
  * SpatialManager handles occlusion culling, frustum culling, and LOD management
- * to optimize rendering performance.
+ * to optimize rendering performance in a 3D scene.
  */
-class SpatialManager {
+export class SpatialManager {
   constructor(scene, camera) {
     this.scene = scene;
     this.camera = camera;
@@ -44,8 +44,87 @@ class SpatialManager {
     this.cachedOccluded = new Set();
     this.objectLODLevels = new Map();
     
+    // Registered objects - with tracking for manual registration
+    this.registeredObjects = new Map();
+    
     // Initialize
     this.initialized = false;
+    
+    // Expose to window for global access
+    window.spatialManager = this;
+  }
+  
+  /**
+   * Register an object for spatial management
+   * @param {THREE.Object3D} object - The object to register
+   * @param {Object} options - Options for managing this object
+   */
+  registerObject(object, options = {}) {
+    if (!object) return false;
+    
+    const defaults = {
+      important: false,     // Important objects are never fully culled
+      dynamic: false,       // Dynamic objects move frequently
+      lod: true,            // Whether to apply LOD to this object
+      cullDistance: 500     // Distance at which to cull this object
+    };
+    
+    // Merge options with defaults
+    const settings = {...defaults, ...options};
+    
+    // Store registration info
+    this.registeredObjects.set(object.uuid, {
+      object,
+      settings
+    });
+    
+    // Add to grid if static object
+    if (!settings.dynamic) {
+      this._addToGrid(object);
+    }
+    
+    return true;
+  }
+  
+  /**
+   * Unregister an object from spatial management
+   * @param {THREE.Object3D} object - The object to unregister
+   */
+  unregisterObject(object) {
+    if (!object) return false;
+    
+    // Remove from registered objects
+    this.registeredObjects.delete(object.uuid);
+    
+    // Remove from grid if needed
+    if (object.userData.gridCell) {
+      const cell = this.grid.get(object.userData.gridCell);
+      if (cell) {
+        const index = cell.indexOf(object);
+        if (index !== -1) {
+          cell.splice(index, 1);
+        }
+      }
+      
+      // Clean up neighbor cells
+      if (object.userData.neighborCells) {
+        object.userData.neighborCells.forEach(cellKey => {
+          const neighborCell = this.grid.get(cellKey);
+          if (neighborCell) {
+            const index = neighborCell.indexOf(object);
+            if (index !== -1) {
+              neighborCell.splice(index, 1);
+            }
+          }
+        });
+      }
+      
+      // Clean up user data
+      delete object.userData.gridCell;
+      delete object.userData.neighborCells;
+    }
+    
+    return true;
   }
   
   /**
@@ -73,6 +152,11 @@ class SpatialManager {
           
           // Create lower detail materials for LOD
           this._createLODMaterials(object);
+          
+          // Auto-register with default settings
+          if (!this.registeredObjects.has(object.uuid)) {
+            this.registerObject(object);
+          }
         }
       });
       
@@ -117,29 +201,17 @@ class SpatialManager {
         }
         
         // MEDIUM: Simplified material with basic properties
-        // Create a new material rather than cloning
-        let mediumMaterial;
+        // Extract base color from original material
+        const baseColor = this._getBaseColor(originalMaterial);
+        const emissiveColor = this._getEmissiveColor(originalMaterial);
         
-        try {
-          // Extract base color from original material
-          const baseColor = this._getBaseColor(originalMaterial);
-          const emissiveColor = this._getEmissiveColor(originalMaterial);
-          
-          mediumMaterial = new THREE.MeshLambertMaterial({
-            color: baseColor,
-            emissive: emissiveColor,
-            transparent: originalMaterial.transparent || false,
-            opacity: originalMaterial.opacity || 1.0,
-            side: originalMaterial.side || THREE.FrontSide
-          });
-        } catch (error) {
-          console.warn("Error creating medium LOD material:", error);
-          // Fallback to basic material
-          mediumMaterial = new THREE.MeshLambertMaterial({
-            color: 0xcccccc,
-            emissive: 0x000000
-          });
-        }
+        const mediumMaterial = new THREE.MeshLambertMaterial({
+          color: baseColor,
+          emissive: emissiveColor,
+          transparent: originalMaterial.transparent || false,
+          opacity: originalMaterial.opacity || 1.0,
+          side: originalMaterial.side || THREE.FrontSide
+        });
         
         object.userData.lodMaterials.MEDIUM = mediumMaterial;
         
@@ -433,6 +505,13 @@ class SpatialManager {
     if (!object.visible) return;
     
     try {
+      // Check if the object has registered settings
+      const registration = this.registeredObjects.get(object.uuid);
+      const options = registration ? registration.settings : { lod: true };
+      
+      // Skip if LOD is disabled for this object
+      if (!options.lod) return;
+      
       // Determine appropriate LOD level
       const lodLevel = this._getLODLevel(distance);
       
@@ -463,6 +542,12 @@ class SpatialManager {
       // Skip occlusion testing for small objects
       if (!object.geometry || !object.geometry.boundingSphere || 
           object.geometry.boundingSphere.radius < 1) {
+        return false;
+      }
+      
+      // Skip occlusion testing for important objects
+      const registration = this.registeredObjects.get(object.uuid);
+      if (registration && registration.settings.important) {
         return false;
       }
       
@@ -543,9 +628,6 @@ class SpatialManager {
       // Create a ray in the direction of movement
       const direction = velocity.clone().normalize();
       this.raycaster.set(position, direction);
-      
-      // Get camera position 
-      const cameraPosition = this.camera.position.clone();
       
       // Determine which cells to check
       const cellX = Math.floor(position.x / this.gridSize);
@@ -665,6 +747,17 @@ class SpatialManager {
               object.userData.processed = true;
               
               try {
+                // Check registration settings
+                const registration = this.registeredObjects.get(object.uuid);
+                const settings = registration ? registration.settings : { important: false, cullDistance: 500 };
+                
+                // Skip essential objects
+                if (settings.important) {
+                  object.visible = true;
+                  this.visibleObjects++;
+                  continue;
+                }
+                
                 // Basic frustum culling first (fast)
                 if (object.geometry && object.geometry.boundingSphere) {
                   const sphere = object.geometry.boundingSphere.clone();
@@ -677,20 +770,13 @@ class SpatialManager {
                   }
                 }
                 
-                // Skip detailed checks for essential objects
-                if (object.userData.essential) {
-                  object.visible = true;
-                  this.visibleObjects++;
-                  continue;
-                }
-                
                 // Distance-based LOD
                 const objPos = new THREE.Vector3();
                 object.getWorldPosition(objPos);
                 const distance = cameraPosition.distanceTo(objPos);
                 
                 // Skip distant objects entirely
-                if (distance > 200) {
+                if (distance > settings.cullDistance) {
                   object.visible = false;
                   this.culledObjects++;
                   continue;
@@ -732,6 +818,15 @@ class SpatialManager {
         this.cachedVisible.clear();
         this.cachedOccluded.clear();
       }
+      
+      // Update moving state from camera position
+      if (!this.lastCameraPosition) {
+        this.lastCameraPosition = cameraPosition.clone();
+      } else {
+        const distance = cameraPosition.distanceTo(this.lastCameraPosition);
+        this.isMoving = distance > 0.1;
+        this.lastCameraPosition.copy(cameraPosition);
+      }
     } catch (error) {
       console.error("Error in spatial manager update:", error);
     }
@@ -746,7 +841,8 @@ class SpatialManager {
       culledObjects: this.culledObjects,
       visibleObjects: this.visibleObjects,
       lodChanges: this.lodChanges,
-      totalCells: this.grid.size
+      totalCells: this.grid.size,
+      isMoving: this.isMoving
     };
   }
   
@@ -759,10 +855,14 @@ class SpatialManager {
     this.cachedVisible.clear();
     this.cachedOccluded.clear();
     this.objectLODLevels.clear();
+    this.registeredObjects.clear();
     
     // Reset flags
     this.initialized = false;
+    
+    // Remove global reference
+    if (window.spatialManager === this) {
+      delete window.spatialManager;
+    }
   }
 }
-
-export default SpatialManager;

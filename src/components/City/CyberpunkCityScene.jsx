@@ -1,23 +1,23 @@
-import React, { useRef, useEffect, useState, useMemo } from 'react';
+import React, { useRef, useEffect, useState, useMemo, useCallback } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { Sky, Environment, useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { useStore } from '../../state/useStore';
-import CyberpunkEnhancer from '../../utils/CyberpunkEnhancer';
+import { createResourceManager, enhanceSceneObjects } from '../../utils/resourceUtils';
+import { CyberpunkEnhancer } from '../../utils/CyberpunkEnhancer';
 import { CyberpunkEffects } from '../Effects/CyberpunkSceneEffects';
 
 /**
  * Enhanced CityScene with custom material enhancements and dynamic effects
  */
-const CyberpunkCityScene = () => {
+const CyberpunkCityScene = React.memo(() => {
   const { debugMode, setCityBounds, setLoading } = useStore();
   const [cityLoaded, setCityLoaded] = useState(false);
   const [loadingProgress, setLoadingProgress] = useState(0);
   const [environmentMap, setEnvironmentMap] = useState(null);
   
   // Get access to invalidate for on-demand rendering
-  const { invalidate, scene } = useThree();
+  const { invalidate, scene, gl } = useThree();
   
   // Refs for scene elements
   const cityRef = useRef();
@@ -35,11 +35,11 @@ const CyberpunkCityScene = () => {
     animationNeedsUpdate: false // Flag to control when animations run
   });
   
-  // Create material enhancer
+  // Create material enhancer - memoized for stability
   const enhancer = useMemo(() => new CyberpunkEnhancer(), []);
   
-  // Create loader once
-  const loader = useMemo(() => new GLTFLoader(), []);
+  // Create resource manager - memoized for stability 
+  const resourceManager = useMemo(() => createResourceManager(gl), [gl]);
   
   // Generate environment map
   useEffect(() => {
@@ -51,29 +51,52 @@ const CyberpunkCityScene = () => {
       setEnvironmentMap(generatedEnvMap);
     } catch (error) {
       console.error("Error creating environment map:", error);
+      
+      // Fallback environment
+      const fallbackEnv = new THREE.CubeTextureLoader()
+        .setPath('/textures/cyberpunk/')
+        .load(['px.jpg', 'nx.jpg', 'py.jpg', 'ny.jpg', 'pz.jpg', 'nz.jpg']);
+      
+      setEnvironmentMap(fallbackEnv);
     }
+    
+    return () => {
+      // Clean up environment map when component unmounts
+      if (environmentMap && environmentMap.dispose) {
+        environmentMap.dispose();
+      }
+    };
   }, [enhancer, environmentMap]);
   
-  // Load city model
+  // Load city model using ResourceManager
   useEffect(() => {
     if (cityLoaded) return;
     
     console.log("Loading city model with enhanced cyberpunk styling...");
     setLoading(true);
     
-    // Load model
-    loader.load(
-      '/models/cybercity/scene.gltf',
-      (gltf) => {
-        const model = gltf.scene;
+    // Configure resource manager
+    resourceManager.setProgressCallback((progress) => {
+      setLoadingProgress(progress);
+      invalidate(); // Render for progress updates
+    });
+    
+    resourceManager.setLoadCallback(() => {
+      // Process the loaded model
+      try {
+        // Get model from cache
+        const model = resourceManager.manager.cache.models['/models/cybercity/scene.gltf']?.scene;
         
-        // Apply scale as in the original version
+        if (!model) {
+          console.error("Failed to load city model from resource manager");
+          return;
+        }
+        
+        // Apply scale
         model.scale.set(0.01, 0.01, 0.01);
         
         // Apply custom material enhancements
         const { animatedMaterials } = enhancer.enhanceModel(model);
-        
-        // Set animated materials for animation
         animationState.current.materials = animatedMaterials;
         
         // Apply environment map if available
@@ -105,45 +128,44 @@ const CyberpunkCityScene = () => {
           // Request a render once the model is loaded
           invalidate();
         }
-      },
-      (progress) => {
-        if (progress.total > 0) {
-          const percent = (progress.loaded / progress.total);
-          setLoadingProgress(percent);
-          // Request a render to update the loading progress
-          invalidate();
-        }
-      },
-      (error) => {
-        console.error("Error loading city model:", error);
+      } catch (error) {
+        console.error("Error processing city model:", error);
+        setLoading(false);
       }
-    );
-  }, [cityLoaded, setLoading, setCityBounds, loader, invalidate, enhancer, environmentMap]);
-  
-  // Trigger animation sequences
-  useEffect(() => {
-    // Run animations frequently for cyberpunk feel
-    const startRandomAnimations = () => {
-      // Don't start new animations if we're already running one
-      if (animationState.current.runningAnimation) return;
-      
-      // Only animate if we have materials to animate
-      if (animationState.current.materials.length > 0) {
-        // Flag that animation needs an update
-        animationState.current.animationNeedsUpdate = true;
-        animationState.current.runningAnimation = true;
-        
-        // Request a render to start animation
-        invalidate();
-        
-        // Set a timeout to stop continuous animations after a period
-        setTimeout(() => {
-          animationState.current.runningAnimation = false;
-          animationState.current.animationNeedsUpdate = false;
-        }, 3000); // Run for 3 seconds
-      }
-    };
+    });
     
+    resourceManager.setErrorCallback((error) => {
+      console.error("Resource loading error:", error);
+      setLoading(false);
+    });
+    
+    // Load model
+    resourceManager.manager.loadModel('/models/cybercity/scene.gltf', {
+      optimizeMaterials: true,
+      emissiveObjects: ['neon', 'light', 'glow', 'sign', 'led', 'emit', 'window'],
+      debugName: 'cybercity'
+    });
+    
+  }, [cityLoaded, setLoading, setCityBounds, invalidate, enhancer, environmentMap, resourceManager]);
+  
+  // Trigger animation sequences - memoized handler
+  const startRandomAnimations = useCallback(() => {
+    // Don't start new animations if we're already running one
+    if (animationState.current.runningAnimation) return;
+    
+    // Only animate if we have materials to animate
+    if (animationState.current.materials.length > 0) {
+      // Flag that animation needs an update
+      animationState.current.animationNeedsUpdate = true;
+      animationState.current.runningAnimation = true;
+      
+      // Request a render to start animation
+      invalidate();
+    }
+  }, [invalidate]);
+  
+  // Setup animation interval
+  useEffect(() => {
     // Start random animations at intervals
     const intervalId = setInterval(() => {
       // 75% chance to start animations
@@ -152,8 +174,9 @@ const CyberpunkCityScene = () => {
       }
     }, 2000 + Math.random() * 2000); // 2-4 seconds between animations
     
+    // Clear interval on unmount
     return () => clearInterval(intervalId);
-  }, [invalidate]);
+  }, [startRandomAnimations]);
   
   // Animation loop for materials
   useFrame((state, delta) => {
@@ -177,6 +200,12 @@ const CyberpunkCityScene = () => {
     // Request another render if changes were made
     if (anyChanges) {
       invalidate();
+    }
+    
+    // Stop continuous animations after a period
+    if (stateRef.runningAnimation && stateRef.time - stateRef.lastUpdate > 3) {
+      stateRef.runningAnimation = false;
+      stateRef.animationNeedsUpdate = false;
     }
   });
   
@@ -285,6 +314,6 @@ const CyberpunkCityScene = () => {
       )}
     </group>
   );
-};
+});
 
 export default CyberpunkCityScene;

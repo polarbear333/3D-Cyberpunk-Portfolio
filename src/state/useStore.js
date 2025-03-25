@@ -1,4 +1,4 @@
-import create from 'zustand';
+import {create} from 'zustand';
 import { Vector3, Box3 } from 'three';
 
 const useStore = create((set, get) => ({

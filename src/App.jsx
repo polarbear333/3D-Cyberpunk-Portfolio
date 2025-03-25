@@ -1,17 +1,20 @@
-import React, { Suspense, useEffect, useState, useRef } from 'react';
+import React, { Suspense, useEffect, useState, useRef, useCallback } from 'react';
 import { Canvas, useThree } from '@react-three/fiber';
 import { Loader, OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
 import { useStore } from './state/useStore';
 import useAudio from './hooks/useAudio';
 
-// UI Components
-import LoadingScreen from './components/UI/LoadingScreen';
-import Interface from './components/UI/Interface';
-import DebugInfo, { CameraTracker } from './components/UI/DebugInfo';
-import StatsPanel from './components/UI/StatsPanel';
+// UI Components - Use lazy loading for non-critical components
+const LoadingScreen = React.lazy(() => import('./components/UI/LoadingScreen'));
+const Interface = React.lazy(() => import('./components/UI/Interface'));
+const DebugInfo = React.lazy(() => import('./components/UI/DebugInfo'));
+const CameraTracker = React.lazy(() => import('./components/UI/DebugInfo')).then(module => ({ 
+  default: module.CameraTracker 
+}));
+const StatsPanel = React.lazy(() => import('./components/UI/StatsPanel'));
 
-// Scene Components
+// Scene Components - Critical components are not lazy loaded
 import CyberpunkCityScene from './components/City/CyberpunkCityScene';
 import CyberpunkEnvironment from './components/Effects/CyberpunkEnvironment';
 import DroneNavigation from './components/Navigation/DroneNavigation';
@@ -28,8 +31,11 @@ import {
   AtmosphericFog 
 } from './components/Effects/CyberpunkSceneEffects';
 
+// Spatial Management for optimized rendering
+import { SpatialManager } from './utils/SpatialManager';
+
 // This component helps synchronize the OrbitControls with on-demand rendering
-function ControlsUpdater() {
+const ControlsUpdater = React.memo(() => {
   const { controls, invalidate } = useThree();
   
   useEffect(() => {
@@ -42,10 +48,10 @@ function ControlsUpdater() {
   }, [controls, invalidate]);
   
   return null;
-}
+});
 
 // Initialize the camera to look at a specific point
-function CameraInitializer() {
+const CameraInitializer = React.memo(() => {
   const { camera, invalidate } = useThree();
   
   useEffect(() => {
@@ -57,10 +63,50 @@ function CameraInitializer() {
   }, [camera, invalidate]);
   
   return null;
-}
+});
+
+// Initialize the spatial manager
+const SpatialManagerInitializer = React.memo(() => {
+  const { scene, camera, invalidate } = useThree();
+  const spatialManagerRef = useRef(null);
+  
+  // Create the spatial manager
+  useEffect(() => {
+    if (!spatialManagerRef.current) {
+      spatialManagerRef.current = new SpatialManager(scene, camera);
+      spatialManagerRef.current.initialize();
+      
+      console.log("Spatial Manager initialized");
+      
+      // Initial render
+      invalidate();
+    }
+    
+    return () => {
+      if (spatialManagerRef.current) {
+        spatialManagerRef.current.dispose();
+      }
+    };
+  }, [scene, camera, invalidate]);
+  
+  // Update spatial manager on each frame
+  useFrame(() => {
+    if (spatialManagerRef.current && spatialManagerRef.current.initialized) {
+      spatialManagerRef.current.update(camera.position);
+      
+      // Get performance metrics if needed for debugging
+      if (debugMode) {
+        const metrics = spatialManagerRef.current.getPerformanceMetrics();
+        // Use metrics for debug display if needed
+      }
+    }
+  });
+  
+  return null;
+});
 
 // Render loop manager for on-demand rendering
-function RenderManager() {
+const RenderManager = React.memo(() => {
   const { invalidate } = useThree();
   const previousTime = useRef(0);
   const frameId = useRef(null);
@@ -90,7 +136,7 @@ function RenderManager() {
   }, [invalidate]);
   
   return null;
-}
+});
 
 function App() {
   const { isLoading, debugMode, setLoading, soundEnabled } = useStore();
@@ -100,15 +146,15 @@ function App() {
   const canvasRef = useRef(null);
   const rendererRef = useRef(null);
   
-  // Initialize audio using our custom hook
+  // Initialize audio using our custom hook - memoized
   const audio = useAudio({ 
     autoplay: false, 
     volume: 0.5, 
     loop: true 
   });
 
-  // Handle audio initialization on first user interaction
-  const initAudio = () => {
+  // Handle audio initialization on first user interaction - memoized callback
+  const initAudio = useCallback(() => {
     if (!audioInitialized && audio) {
       audio.initialize();
       
@@ -143,7 +189,7 @@ function App() {
       
       loadAndPlayAmbient();
     }
-  };
+  }, [audioInitialized, audio, soundEnabled]);
   
   // Initialize audio on first user interaction
   useEffect(() => {
@@ -161,7 +207,7 @@ function App() {
       window.removeEventListener('click', handleInteraction);
       window.removeEventListener('keydown', handleInteraction);
     };
-  }, []);
+  }, [initAudio]);
   
   // Monitor sound enabled/disabled state
   useEffect(() => {
@@ -180,10 +226,10 @@ function App() {
         }
       }
     }
-  }, [soundEnabled, audioInitialized]);
+  }, [soundEnabled, audioInitialized, audio]);
 
-  // Initialize renderer with optimized settings
-  const initRenderer = (state) => {
+  // Initialize renderer with optimized settings - memoized callback
+  const initRenderer = useCallback((state) => {
     if (!rendererRef.current && state.gl) {
       rendererRef.current = state.gl;
       
@@ -207,38 +253,41 @@ function App() {
       
       console.log("Renderer configured");
     }
-  };
+  }, []);
 
-  // Handle window resize
-  useEffect(() => {
-    const handleResize = () => {
-      if (rendererRef.current) {
-        // Make sure canvas dimensions are correct
-        rendererRef.current.setSize(window.innerWidth, window.innerHeight);
-        
-        // Update camera aspect ratio
-        if (canvasRef.current) {
-          const camera = canvasRef.current.__r3f?.camera;
-          if (camera) {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-          }
-        }
-        
-        // Make sure a render happens after resize
-        if (canvasRef.current && canvasRef.current.__r3f) {
-          canvasRef.current.__r3f.invalidate();
+  // Handle window resize - memoized callback
+  const handleResize = useCallback(() => {
+    if (rendererRef.current) {
+      // Make sure canvas dimensions are correct
+      rendererRef.current.setSize(window.innerWidth, window.innerHeight);
+      
+      // Update camera aspect ratio
+      if (canvasRef.current) {
+        const camera = canvasRef.current.__r3f?.camera;
+        if (camera) {
+          camera.aspect = window.innerWidth / window.innerHeight;
+          camera.updateProjectionMatrix();
         }
       }
-    };
-    
+      
+      // Make sure a render happens after resize
+      if (canvasRef.current && canvasRef.current.__r3f) {
+        canvasRef.current.__r3f.invalidate();
+      }
+    }
+  }, []);
+  
+  // Set up resize listener
+  useEffect(() => {
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
-  }, []);
+  }, [handleResize]);
 
   return (
     <div className="w-screen h-screen bg-slate-900 overflow-hidden">
-      {isLoading && <LoadingScreen />}
+      <Suspense fallback={null}>
+        {isLoading && <LoadingScreen />}
+      </Suspense>
       
       <Canvas
         ref={canvasRef}
@@ -268,6 +317,9 @@ function App() {
         <Suspense fallback={null}>
           {/* Initialize camera with lookAt */}
           <CameraInitializer />
+          
+          {/* Initialize spatial manager */}
+          <SpatialManagerInitializer />
           
           {/* Manages on-demand rendering with OrbitControls */}
           <ControlsUpdater />
@@ -313,7 +365,9 @@ function App() {
           />
           
           {/* Camera position tracker for debug info */}
-          <CameraTracker />
+          <Suspense fallback={null}>
+            <CameraTracker />
+          </Suspense>
         </Suspense>
       </Canvas>
       
@@ -339,13 +393,23 @@ function App() {
       />
       
       {/* 2D UI overlay with cyberpunk styling */}
-      <Interface audio={audio} />
+      <Suspense fallback={null}>
+        <Interface audio={audio} />
+      </Suspense>
       
       {/* Debug Info */}
-      {debugMode && <DebugInfo />}
+      {debugMode && (
+        <Suspense fallback={null}>
+          <DebugInfo />
+        </Suspense>
+      )}
       
       {/* Only show stats in debug mode */}
-      {debugMode && <StatsPanel mode={0} position="top-left" />}
+      {debugMode && (
+        <Suspense fallback={null}>
+          <StatsPanel mode={0} position="top-left" />
+        </Suspense>
+      )}
       
       {/* Global scanline effect */}
       <div className="scanline"></div>
