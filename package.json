@@ -10,6 +10,8 @@
     "lint": "eslint src --ext js,jsx --report-unused-disable-directives --max-warnings 0"
   },
   "dependencies": {
+    "@react-spring/rafz": "^9.7.5",
+    "@react-spring/web": "^9.7.5",
     "@react-three/drei": "^9.88.0",
     "@react-three/fiber": "^8.14.5",
     "@react-three/postprocessing": "^2.15.0",
@@ -19,7 +21,7 @@
     "react-dom": "^18.2.0",
     "stats.js": "^0.17.0",
     "three": "^0.157.0",
-    "zustand": "^4.4.1"
+    "zustand": "^4.5.6"
   },
   "devDependencies": {
     "@types/react": "^18.2.28",

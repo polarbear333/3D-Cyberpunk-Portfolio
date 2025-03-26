@@ -1,28 +1,43 @@
 import React, { Suspense, useEffect, useState, useRef } from 'react';
 import { Canvas } from '@react-three/fiber';
-import { Loader, OrbitControls } from '@react-three/drei';
+import { Loader } from '@react-three/drei';
 import useAudio from './hooks/useAudio';
 import { useStore } from './state/useStore';
 
-// UI Components - Use lazy loading for non-critical components
+// Import our new event-driven systems
+import EventSystemInitializer from './systems/EventSystemInitializer';
+import RenderingSystem from './systems/RenderingSystem';
+import SpatialSystem from './systems/SpatialSystem';
+
+// UI Components - with event-driven versions
 const LoadingScreen = React.lazy(() => import('./components/UI/LoadingScreen'));
 const Interface = React.lazy(() => import('./components/UI/Interface'));
-const DebugInfo = React.lazy(() => import('./components/UI/DebugInfo'));
-import { CameraTracker } from './components/UI/DebugInfo';
-const StatsPanel = React.lazy(() => import('./components/UI/StatsPanel'));
+const DebugInfoEvent = React.lazy(() => import('./components/UI/DebugInfoEvent'));
+const StatsPanelEvent = React.lazy(() => import('./components/UI/StatsPanelEvent'));
 
-// Scene Components - Critical components are not lazy loaded
+// Import CameraTracker separately to avoid issues with dynamic imports
+import { CameraTrackerEvent } from './components/UI/DebugInfoEvent';
+
+// Import our event-driven components
+import CameraController from './components/Camera/CameraController';
 import CyberpunkCityScene from './components/City/CyberpunkCityScene';
 import CyberpunkEnvironment from './components/Effects/CyberpunkEnvironment';
-import DroneNavigation from './components/Navigation/DroneNavigation';
-import HotspotManager from './components/Hotspots/HotspotManager';
+import DroneNavigationEvents from './components/Navigation/DroneNavigationEvents';
+import HotspotManagerEvents from './components/Hotspots/HotspotManagerEvents';
 
-// Rendering System 
-import OptimizedRenderer from './utils/OptimizedRenderer';
-import SpatialManagerController from './utils/SpatialManagerController';
+// Import cyberpunk effects
+import { 
+  FlyingVehicles, 
+  CyberpunkRain,
+  AnimatedBillboards, 
+  AtmosphericFog 
+} from './components/Effects/CyberpunkSceneEffects';
 
+// Import event types for initialization
+import { useEventSystem, EVENT_TYPES, useEventListener } from './systems/EventSystem';
+import OptimizedRendererEvent from './utils/OptimizedRendererEvent';
 
-function App() {
+function EventDrivenApp() {
   const { isLoading, debugMode, setLoading, soundEnabled } = useStore();
   const [audioInitialized, setAudioInitialized] = useState(false);
   
@@ -36,6 +51,9 @@ function App() {
     loop: true 
   });
 
+  // Access event system
+  const { emit } = useEventSystem(state => ({ emit: state.emit }));
+  
   // Handle audio initialization on first user interaction
   const initAudio = React.useCallback(() => {
     if (!audioInitialized && audio) {
@@ -55,15 +73,30 @@ function App() {
           }
           
           setAudioInitialized(true);
+          
+          // Emit audio loaded event
+          emit(EVENT_TYPES.ASSET_LOAD_COMPLETE, {
+            type: 'audio',
+            assets: ['ambient', 'drone', 'click', 'hover']
+          });
         } catch (error) {
           console.error('Failed to initialize audio:', error);
           setAudioInitialized(false);
+          
+          // Emit error event
+          emit(EVENT_TYPES.ASSET_LOAD_ERROR, {
+            type: 'audio',
+            error: error.message
+          });
         }
       };
       
+      // Emit loading event
+      emit(EVENT_TYPES.ASSET_LOAD_START, { type: 'audio' });
+      
       loadAndPlayAmbient();
     }
-  }, [audioInitialized, audio, soundEnabled]);
+  }, [audioInitialized, audio, soundEnabled, emit]);
   
   // Initialize audio on first user interaction
   useEffect(() => {
@@ -88,14 +121,52 @@ function App() {
     if (audioInitialized) {
       if (soundEnabled) {
         audio.playAmbient('ambient', { volume: 0.3 });
+        
+        // Emit sound enabled event
+        emit('audio:enabled', { source: 'ambient' });
       } else {
         audio.stopSound('ambient');
+        
+        // Emit sound disabled event
+        emit('audio:disabled', { source: 'ambient' });
       }
     }
-  }, [soundEnabled, audioInitialized, audio]);
+  }, [soundEnabled, audioInitialized, audio, emit]);
+  
+  // Listen for city load completion event to hide loading screen
+  useEventListener(EVENT_TYPES.ASSET_LOAD_COMPLETE, (data) => {
+    if (data.type === 'city') {
+      // A small delay for visual effect
+      setTimeout(() => {
+        setLoading(false);
+        
+        // Emit app loaded event
+        emit(EVENT_TYPES.APP_LOADED, {
+          timestamp: Date.now()
+        });
+      }, 1000);
+    }
+  });
+  
+  // Listen for errors to handle them centrally
+  useEventListener(EVENT_TYPES.ASSET_LOAD_ERROR, (data) => {
+    console.error(`Asset loading error (${data.type}):`, data.error);
+    // Could add more sophisticated error handling here
+  });
+  
+  // Listen for performance warnings to potentially adjust quality
+  useEventListener('performance:warning', (data) => {
+    if (data.fps < 20) {
+      // Could auto-adjust quality settings here
+      console.warn('Performance warning: Low FPS detected', data.fps);
+    }
+  });
 
   return (
     <div className="w-screen h-screen bg-slate-900 overflow-hidden">
+      {/* Initialize event system before any other components */}
+      <EventSystemInitializer />
+      
       <Suspense fallback={null}>
         {isLoading && <LoadingScreen />}
       </Suspense>
@@ -121,30 +192,46 @@ function App() {
         shadows={false}
       >
         <Suspense fallback={null}>
-          <SpatialManagerController enabled={true} />
-
-          {/* Instead of custom CameraInitializer, just use OrbitControls to set camera look-at */}
+          {/* Core systems */}
+          <SpatialSystem enabled={true} />
+          <RenderingSystem 
+            enabled={true}
+            bloomStrength={0.7}
+            bloomRadius={1.0}
+            bloomThreshold={0}
+            adaptiveResolution={true}
+          />
+          
+          {/* Environment and scene */}
           <CyberpunkEnvironment intensity={0.3} />
           <CyberpunkCityScene />
           
-          <DroneNavigation audio={audio} />
-          <HotspotManager audio={audio} />
+          {/* Dynamic effects */}
+          <FlyingVehicles count={15} speed={1.0} />
+          <CyberpunkRain intensity={0.7} />
+          <AnimatedBillboards count={8} />
+          <AtmosphericFog />
           
-          <OrbitControls 
-            enableDamping={true}
-            dampingFactor={0.05}
-            screenSpacePanning={false}
+          {/* Interactive elements */}
+          <DroneNavigationEvents audio={audio} />
+          <HotspotManagerEvents audio={audio} />
+          
+          {/* Camera controller */}
+          <CameraController 
             minDistance={10}
             maxDistance={1000}
+            dampingFactor={0.05}
             enablePan={debugMode}
-            target={[0, 10, 0]}
+            lookAt={[0, 10, 0]}
           />
           
+          {/* Camera tracker for debug info */}
           <Suspense fallback={null}>
-            <CameraTracker />
+            <CameraTrackerEvent />
           </Suspense>
           
-          <OptimizedRenderer 
+          {/* Legacy compatibility */}
+          <OptimizedRendererEvent 
             bloomStrength={0.7}
             bloomRadius={1.0}
             bloomThreshold={0}
@@ -180,13 +267,13 @@ function App() {
       
       {debugMode && (
         <Suspense fallback={null}>
-          <DebugInfo />
+          <DebugInfoEvent />
         </Suspense>
       )}
       
       {debugMode && (
         <Suspense fallback={null}>
-          <StatsPanel mode={0} position="top-left" />
+          <StatsPanelEvent mode={0} position="top-left" />
         </Suspense>
       )}
       
@@ -194,5 +281,4 @@ function App() {
     </div>
   );
 }
-
-export default App;
+export default EventDrivenApp();

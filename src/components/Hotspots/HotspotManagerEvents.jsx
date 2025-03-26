@@ -1,40 +1,53 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { useFrame, useThree } from '@react-three/fiber';
+import { useThree } from '@react-three/fiber';
 import { useStore } from '../../state/useStore';
-import { Vector3, Raycaster, Color } from 'three';
+import { Vector3, Color } from 'three';
 import { Text, Billboard, Html } from '@react-three/drei';
 import { gsap } from 'gsap';
+import { useEventSystem, EVENT_TYPES, PRIORITY, useSystem } from '../../systems/EventSystem';
 
-// Individual Hotspot component
-const Hotspot = ({ id, position, title, color, projectData, audio }) => {
-  const { activeHotspotId, dronePosition, setActiveHotspot, showOverlay } = useStore();
+// Individual Hotspot component with event system integration
+const HotspotEvent = ({ id, position, title, color, projectData, audio }) => {
+  const { activeHotspotId, setActiveHotspot, showOverlay } = useStore();
   const isActive = activeHotspotId === id;
+  
+  // Refs for animations and update
   const hotspotRef = useRef();
   const glowRef = useRef();
   const markerRef = useRef();
   const arrowRef = useRef();
+  
+  // Local state
   const [hovered, setHovered] = useState(false);
   
-  // Animation for the hotspot
+  // Get event system and Three.js context
+  const { emit } = useEventSystem();
+  const { invalidate } = useThree();
+  
+  // Setup animations and register with spatial manager
   useEffect(() => {
     if (!hotspotRef.current) return;
     
-    // Register with SpatialManager
-    if (window.spatialManager?.initialized) {
-      window.spatialManager.registerObject(hotspotRef.current, {
+    // Register with SpatialManager via event system
+    emit(EVENT_TYPES.OBJECT_ADDED, {
+      object: hotspotRef.current,
+      options: {
         important: true, // Hotspots are important interactive elements
         lod: false,      // No LOD for interactive elements 
         cullDistance: Infinity // Never completely cull interactive hotspots
-      });
-      
-      // Also register the marker if it exists
-      if (markerRef.current) {
-        window.spatialManager.registerObject(markerRef.current, {
+      }
+    });
+    
+    // Also register the marker if it exists
+    if (markerRef.current) {
+      emit(EVENT_TYPES.OBJECT_ADDED, {
+        object: markerRef.current,
+        options: {
           important: true,
           lod: false,
           cullDistance: Infinity
-        });
-      }
+        }
+      });
     }
     
     // Floating animation
@@ -67,14 +80,19 @@ const Hotspot = ({ id, position, title, color, projectData, audio }) => {
       });
     }
     
+    // Clean up on unmount
     return () => {
       // Unregister from SpatialManager when unmounted
-      if (window.spatialManager?.initialized) {
-        window.spatialManager.unregisterObject(hotspotRef.current);
-        if (markerRef.current) {
-          window.spatialManager.unregisterObject(markerRef.current);
-        }
+      emit(EVENT_TYPES.OBJECT_REMOVED, { object: hotspotRef.current });
+      
+      if (markerRef.current) {
+        emit(EVENT_TYPES.OBJECT_REMOVED, { object: markerRef.current });
       }
+      
+      // Kill GSAP animations
+      gsap.killTweensOf(hotspotRef.current.position);
+      if (glowRef.current) gsap.killTweensOf(glowRef.current);
+      if (arrowRef.current) gsap.killTweensOf(arrowRef.current.rotation);
     };
   }, [position, isActive]);
   
@@ -83,55 +101,85 @@ const Hotspot = ({ id, position, title, color, projectData, audio }) => {
     setHovered(true);
     document.body.style.cursor = 'pointer';
     
+    // Emit hover event
+    emit(EVENT_TYPES.HOTSPOT_HOVER, {
+      id,
+      position: new Vector3(...position),
+      action: 'enter'
+    });
+    
     // Play hover sound
     if (audio?.isInitialized) {
       audio.playSound('hover', { volume: 0.2 });
     }
+    
+    // Request render
+    invalidate();
   };
   
   const handlePointerOut = () => {
     setHovered(false);
     document.body.style.cursor = 'auto';
+    
+    // Emit hover end event
+    emit(EVENT_TYPES.HOTSPOT_HOVER, {
+      id,
+      position: new Vector3(...position),
+      action: 'exit'
+    });
+    
+    // Request render
+    invalidate();
   };
   
   // Handle click
   const handleClick = (e) => {
     e.stopPropagation();
+    
+    // Update store state
     setActiveHotspot(id);
+    
+    // Emit selection event
+    emit(EVENT_TYPES.HOTSPOT_SELECT, {
+      id,
+      position: new Vector3(...position),
+      projectData
+    });
     
     // Play click sound
     if (audio?.isInitialized) {
       audio.playSound('click', { volume: 0.5 });
     }
     
-    // When clicked, show detailed project info
+    // Show overlay with project data
     showOverlay(projectData);
+    
+    // Request render
+    invalidate();
   };
   
-  // Handle interaction based on distance
-  useFrame(() => {
-    if (!hotspotRef.current) return;
-    
-    // Calculate distance to drone
-    const distanceVector = new Vector3(...position)
-      .sub(new Vector3(...dronePosition.toArray()));
-    const distance = distanceVector.length();
-    
-    // Activate hotspot when drone is close enough
-    if (distance < 15 && !isActive && !hovered) {
-      // Only change the scale based on distance
-      if (markerRef.current) {
-        const scale = Math.max(1, Math.min(3, 15 / distance));
-        markerRef.current.scale.set(scale, scale, scale);
-      }
-    }
-    
-    // Scale marker based on whether it's hovered or active
-    if (markerRef.current) {
+  // Register system to update hotspot marker animation based on state
+  useSystem(
+    `hotspot-marker-${id}`, 
+    ({ deltaTime }) => {
+      if (!markerRef.current) return;
+      
+      // Calculate target scale based on state
       const targetScale = hovered || isActive ? 1.5 : 1;
-      markerRef.current.scale.lerp(new Vector3(targetScale, targetScale, targetScale), 0.1);
-    }
-  });
+      
+      // Smoothly interpolate scale
+      const currentScale = markerRef.current.scale.x;
+      const newScale = currentScale + (targetScale - currentScale) * Math.min(1, deltaTime * 10);
+      
+      // Only update if change is significant
+      if (Math.abs(newScale - currentScale) > 0.01) {
+        markerRef.current.scale.set(newScale, newScale, newScale);
+        invalidate();
+      }
+    },
+    PRIORITY.LOW,
+    true
+  );
   
   // Create a stylized cyberpunk color
   const hotspotColor = new Color(color);
@@ -158,7 +206,7 @@ const Hotspot = ({ id, position, title, color, projectData, audio }) => {
           />
         </mesh>
         
-        {/* Spotlight beam - visible from top like in screenshot */}
+        {/* Spotlight beam */}
         <mesh position={[0, 8, 0]} rotation={[Math.PI/2, 0, 0]}>
           <coneGeometry args={[4, 15, 16, 1, true]} />
           <meshBasicMaterial 
@@ -207,7 +255,6 @@ const Hotspot = ({ id, position, title, color, projectData, audio }) => {
             outlineWidth={0.05}
             anchorX="center"
             anchorY="middle"
-            // Using a standard font instead of custom font to avoid loading errors
           >
             {title}
           </Text>
@@ -236,16 +283,26 @@ const Hotspot = ({ id, position, title, color, projectData, audio }) => {
   );
 };
 
-// Hotspot Manager component - handles all hotspots in the scene
-const HotspotManager = ({ audio }) => {
+// The main HotspotManager component
+const HotspotManagerEvents = ({ audio }) => {
   const { projects, loadProjects } = useStore();
-  const { camera } = useThree();
-  const raycaster = new Raycaster();
+  const { emit } = useEventSystem();
   
   // Load project data on component mount
   useEffect(() => {
     loadProjects();
-  }, [loadProjects]);
+    
+    // Emit event when projects are loaded
+    emit(EVENT_TYPES.ASSET_LOAD_START, { type: 'projects' });
+    
+    // When projects change, emit loaded event
+    if (projects.length > 0) {
+      emit(EVENT_TYPES.ASSET_LOAD_COMPLETE, { 
+        type: 'projects',
+        count: projects.length
+      });
+    }
+  }, [loadProjects, projects.length]);
   
   // Sample hotspot data (in a real app, this would come from your CMS or JSON)
   const hotspots = [
@@ -319,10 +376,10 @@ const HotspotManager = ({ audio }) => {
   return (
     <group>
       {hotspots.map((hotspot) => (
-        <Hotspot key={hotspot.id} {...hotspot} audio={audio} />
+        <HotspotEvent key={hotspot.id} {...hotspot} audio={audio} />
       ))}
     </group>
   );
 };
 
-export default HotspotManager;
+export default HotspotManagerEvents;
