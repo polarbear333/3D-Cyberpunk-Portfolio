@@ -19,6 +19,7 @@ import HotspotManager from './components/Hotspots/HotspotManager';
 
 // Rendering System 
 import OptimizedRenderer from './utils/OptimizedRenderer';
+import SpatialManagerController from './utils/SpatialManagerController';
 
 
 function App() {
@@ -120,6 +121,8 @@ function App() {
         shadows={false}
       >
         <Suspense fallback={null}>
+          <SpatialManagerController enabled={true} />
+
           {/* Instead of custom CameraInitializer, just use OrbitControls to set camera look-at */}
           <CyberpunkEnvironment intensity={0.3} />
           <CyberpunkCityScene />

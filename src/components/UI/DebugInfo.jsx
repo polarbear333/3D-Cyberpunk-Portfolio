@@ -1,11 +1,12 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
+import * as THREE from 'three';
 import { useFrame, useThree } from '@react-three/fiber';
 import { useStore } from '../../state/useStore';
 
 // This component will be rendered outside the Canvas
 const DebugInfo = () => {
   const { debugMode, dronePosition } = useStore();
-  const [info, setInfo] = useState({
+  const infoRef = useRef({
     fps: 0,
     dronePos: [0, 0, 0],
     drawCalls: 0,
@@ -19,38 +20,47 @@ const DebugInfo = () => {
     lodChanges: 0
   });
   
-  // FPS calculation
-  const [frames, setFrames] = useState(0);
-  const [lastTime, setLastTime] = useState(performance.now());
+  // Use state only for triggering renders, not for storing metrics
+  const [, setUpdateTrigger] = useState(0);
   
-  // Update info from store values
+  // FPS calculation with refs to avoid state updates
+  const framesRef = useRef(0);
+  const lastTimeRef = useRef(performance.now());
+  const rafIdRef = useRef(null);
+  const updateIntervalRef = useRef(null);
+  
+  // Update metrics from dronePosition when it changes
   useEffect(() => {
-    // Safely update drone position, checking for undefined values
     if (dronePosition && typeof dronePosition.x === 'number') {
-      setInfo(prev => ({
-        ...prev,
-        dronePos: [
-          Math.round(dronePosition.x * 10) / 10,
-          Math.round(dronePosition.y * 10) / 10,
-          Math.round(dronePosition.z * 10) / 10
-        ]
-      }));
+      infoRef.current.dronePos = [
+        Math.round(dronePosition.x * 10) / 10,
+        Math.round(dronePosition.y * 10) / 10,
+        Math.round(dronePosition.z * 10) / 10
+      ];
     }
   }, [dronePosition]);
 
   // Calculate FPS and gather performance metrics
   useEffect(() => {
-    // Only do this if debug mode is on
     if (!debugMode) return;
     
-    const frameCounter = () => {
-      // Increment frame count
-      setFrames(prev => prev + 1);
-      
-      // Calculate FPS every second
+    // Function to count frames - doesn't update state directly
+    const countFrame = () => {
+      framesRef.current++;
+      rafIdRef.current = requestAnimationFrame(countFrame);
+    };
+
+    // Start the frame counter
+    rafIdRef.current = requestAnimationFrame(countFrame);
+    
+    // Periodically update metrics (once per second)
+    updateIntervalRef.current = setInterval(() => {
       const now = performance.now();
-      if (now - lastTime > 1000) {
-        const fps = Math.round((frames * 1000) / (now - lastTime));
+      const elapsed = now - lastTimeRef.current;
+      
+      if (elapsed > 0) {
+        // Calculate FPS
+        const fps = Math.round((framesRef.current * 1000) / elapsed);
         
         // Get renderer info if available
         let drawCalls = 0;
@@ -83,50 +93,56 @@ const DebugInfo = () => {
           console.warn("Could not get renderer or SpatialManager info");
         }
         
-        setInfo(prev => ({
-          ...prev,
+        // Update ref values instead of state
+        infoRef.current = {
+          ...infoRef.current,
           fps,
           drawCalls,
           triangles,
           textures,
           geometries,
-          // Add SpatialManager metrics
           culledObjects,
           visibleObjects,
           lodChanges
-        }));
+        };
         
-        setFrames(0);
-        setLastTime(now);
+        // Reset frame counter
+        framesRef.current = 0;
+        lastTimeRef.current = now;
+        
+        // Trigger a single re-render
+        setUpdateTrigger(prev => prev + 1);
+      }
+    }, 1000); // Update only once per second
+    
+    // Cleanup on unmount
+    return () => {
+      if (rafIdRef.current) {
+        cancelAnimationFrame(rafIdRef.current);
+        rafIdRef.current = null;
       }
       
-      // Schedule next frame
-      requestAnimationFrame(frameCounter);
+      if (updateIntervalRef.current) {
+        clearInterval(updateIntervalRef.current);
+        updateIntervalRef.current = null;
+      }
     };
-
-    // Start counting frames
-    const frameId = requestAnimationFrame(frameCounter);
-    
-    // Clean up
-    return () => {
-      cancelAnimationFrame(frameId);
-    };
-  }, [debugMode, frames, lastTime]);
+  }, [debugMode]);
   
-  // Listen for camera position updates from the Canvas via a custom event
+  // Handle camera position updates
   useEffect(() => {
     const handleCameraUpdate = (event) => {
       if (event.detail && event.detail.cameraPosition) {
         const { cameraPosition } = event.detail;
         
-        setInfo(prev => ({
-          ...prev,
-          cameraPos: [
-            Math.round(cameraPosition.x),
-            Math.round(cameraPosition.y),
-            Math.round(cameraPosition.z)
-          ]
-        }));
+        infoRef.current.cameraPos = [
+          Math.round(cameraPosition.x),
+          Math.round(cameraPosition.y),
+          Math.round(cameraPosition.z)
+        ];
+        
+        // No need to trigger a re-render for every camera position change
+        // The periodic update will show the latest values
       }
     };
     
@@ -138,6 +154,9 @@ const DebugInfo = () => {
   }, []);
   
   if (!debugMode) return null;
+  
+  // Destructure info from ref for readability
+  const info = infoRef.current;
   
   return (
     <div className="fixed top-4 left-4 bg-black bg-opacity-70 p-4 rounded-lg text-white font-mono text-xs z-50 pointer-events-auto">
@@ -187,13 +206,19 @@ const DebugInfo = () => {
 // This component will just emit camera position updates
 export const CameraTracker = () => {
   const { camera } = useThree();
+  const lastPositionRef = useRef(new THREE.Vector3());
   
   useFrame(() => {
     if (camera) {
-      // Dispatch custom event with camera position
-      window.dispatchEvent(new CustomEvent('cameraPositionUpdate', {
-        detail: { cameraPosition: camera.position }
-      }));
+      // Only emit events when the camera position changes significantly
+      // to reduce unnecessary event dispatching
+      const currentPosition = camera.position.clone();
+      if (currentPosition.distanceTo(lastPositionRef.current) > 0.1) {
+        window.dispatchEvent(new CustomEvent('cameraPositionUpdate', {
+          detail: { cameraPosition: currentPosition }
+        }));
+        lastPositionRef.current.copy(currentPosition);
+      }
     }
   });
   
