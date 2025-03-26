@@ -10,7 +10,7 @@ export class SpatialManager {
     this.camera = camera;
     
     // Create spatial partitioning grid
-    this.gridSize = 25; // Grid cell size in world units
+    this.gridSize = 40; // Grid cell size in world units
     this.grid = new Map();
     
     // Track moving state
@@ -28,10 +28,10 @@ export class SpatialManager {
     // LOD settings
     this.lodLevels = {
       FULL: { distance: 0, scale: 1.0 },
-      HIGH: { distance: 30, scale: 0.8 },
-      MEDIUM: { distance: 60, scale: 0.5 },
-      LOW: { distance: 100, scale: 0.3 },
-      VERY_LOW: { distance: 150, scale: 0.1 }
+      HIGH: { distance: 50, scale: 0.8 },
+      MEDIUM: { distance: 100, scale: 0.5 },
+      LOW: { distance: 200, scale: 0.3 },
+      VERY_LOW: { distance: 300, scale: 0.1 }
     };
     
     // Performance monitoring

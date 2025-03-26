@@ -163,9 +163,9 @@ class RenderingManager {
     // Create bloom pass
     this.bloomPass = new UnrealBloomPass(
       new THREE.Vector2(window.innerWidth, window.innerHeight),
-      1.0, // strength
-      0.8, // radius
-      0.3  // threshold
+      0.7, // strength
+      0.5, // radius
+      0.4  // threshold
     );
     
     // Create custom horizontal and vertical blur passes for efficient Gaussian blur

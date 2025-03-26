@@ -17,9 +17,6 @@ export const FlyingVehicles = ({ count = 10, speed = 1.0 }) => {
     vehiclesRef.current = container;
     scene.add(container);
     
-    // Clear any existing vehicles
-    vehiclesData.current = [];
-    
     // Vehicle colors
     const colors = [
       new THREE.Color('#00FFFF'), // Cyan
@@ -90,16 +87,6 @@ export const FlyingVehicles = ({ count = 10, speed = 1.0 }) => {
       // Add to container
       container.add(vehicleMesh);
       
-      // Register with spatial manager as a dynamic object
-      if (window.spatialManager?.initialized) {
-        window.spatialManager.registerObject(vehicleMesh, {
-          important: false,
-          dynamic: true, // Mark as dynamically moving object
-          lod: true,     // LOD can still be applied
-          cullDistance: 300 // Culling distance appropriate for vehicles
-        });
-      }
-      
       // Store reference data
       vehiclesData.current.push({
         mesh: vehicleMesh,
@@ -115,11 +102,6 @@ export const FlyingVehicles = ({ count = 10, speed = 1.0 }) => {
     
     return () => {
       // Clean up
-      vehiclesData.current.forEach(vehicle => {
-        if (window.spatialManager?.initialized) {
-          window.spatialManager.unregisterObject(vehicle.mesh);
-        }
-      });
       scene.remove(container);
     };
   }, [count, scene]);
@@ -213,21 +195,8 @@ export const CyberpunkRain = ({ intensity = 1.0 }) => {
       });
     }
     
-    // Register the rain container with SpatialManager for optimization
-    if (window.spatialManager?.initialized) {
-      window.spatialManager.registerObject(container, {
-        important: false, 
-        dynamic: true,   // Rain moves around with camera
-        lod: true,
-        cullDistance: Infinity // Don't cull rain completely
-      });
-    }
-    
     return () => {
       // Clean up
-      if (window.spatialManager?.initialized) {
-        window.spatialManager.unregisterObject(container);
-      }
       scene.remove(container);
     };
   }, [scene, camera, maxRaindrops, intensity]);
@@ -308,12 +277,7 @@ export const AnimatedBillboards = ({ count = 5 }) => {
     'BIOHACKING',
     'QUANTUM TECH',
     'NANOBOT REPAIR',
-    'GENETIC MODS',
-    'CRYPTO EXCHANGE',
-    'SYNTH FOOD',
-    'DRONE DELIVERY',
-    'DIGITAL DREAMS',
-    'MIND UPLOAD'
+    'GENETIC MODS'
   ];
   
   // Slogans that can appear with advertisements
@@ -323,11 +287,7 @@ export const AnimatedBillboards = ({ count = 5 }) => {
     'BEYOND HUMAN',
     'THINK BETTER',
     'LIVE ENHANCED',
-    'FEEL THE POWER',
-    'BE MORE',
-    'EVOLVE TODAY',
-    'NEXT LEVEL',
-    'NO LIMITS'
+    'FEEL THE POWER'
   ];
   
   // Generate billboards on component mount
@@ -387,45 +347,6 @@ export const AnimatedBillboards = ({ count = 5 }) => {
       // Add to container
       container.add(billboard);
       
-      // Register billboard with SpatialManager
-      if (window.spatialManager?.initialized) {
-        window.spatialManager.registerObject(billboard, {
-          important: false,
-          lod: true,
-          cullDistance: 400 // Billboards should be visible from far away
-        });
-      }
-      
-      // Create canvas for dynamic text
-      const canvas = document.createElement('canvas');
-      canvas.width = 512;
-      canvas.height = 256;
-      const ctx = canvas.getContext('2d');
-      
-      // Create texture from canvas
-      const texture = new THREE.CanvasTexture(canvas);
-      
-      // Create material with the texture
-      const textMaterial = new THREE.MeshBasicMaterial({
-        map: texture,
-        transparent: true,
-        side: THREE.FrontSide
-      });
-      
-      // Create text plane slightly in front of billboard
-      const textPlane = new THREE.Mesh(
-        new THREE.PlaneGeometry(width * 0.9, height3d * 0.9),
-        textMaterial
-      );
-      
-      // Position slightly in front
-      textPlane.position.copy(billboard.position);
-      textPlane.rotation.copy(billboard.rotation);
-      textPlane.translateZ(0.05); // Move forward slightly
-      
-      // Add to container
-      container.add(textPlane);
-      
       // Add glow
       const glowIntensity = 2;
       const glowLight = new THREE.PointLight(color, glowIntensity, 10);
@@ -440,10 +361,6 @@ export const AnimatedBillboards = ({ count = 5 }) => {
       // Store reference data
       billboardsData.current.push({
         billboard,
-        textPlane,
-        texture,
-        canvas,
-        ctx,
         color: color.getStyle(),
         adText,
         slogan,
@@ -455,84 +372,12 @@ export const AnimatedBillboards = ({ count = 5 }) => {
     
     return () => {
       // Clean up
-      if (window.spatialManager?.initialized) {
-        billboardsData.current.forEach(data => {
-          window.spatialManager.unregisterObject(data.billboard);
-          window.spatialManager.unregisterObject(data.textPlane);
-        });
-      }
       scene.remove(container);
     };
   }, [count, scene, adTexts, slogans]);
   
-  // Draw text to canvas
-  const updateBillboardText = (billboard, time) => {
-    const { ctx, canvas, color, adText, slogan } = billboard;
-    
-    // Clear canvas
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    
-    // Fill with darker version of glow color for background
-    ctx.fillStyle = color;
-    ctx.globalAlpha = 0.15;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.globalAlpha = 1.0;
-    
-    // Add noise/static effect
-    if (Math.random() > 0.95) {
-      // Occasional glitch effect
-      for (let i = 0; i < 20; i++) {
-        const x = Math.random() * canvas.width;
-        const y = Math.random() * canvas.height;
-        const width = Math.random() * 100 + 50;
-        const height = Math.random() * 10 + 2;
-        
-        ctx.fillStyle = '#FFFFFF';
-        ctx.globalAlpha = 0.3;
-        ctx.fillRect(x, y, width, height);
-      }
-      ctx.globalAlpha = 1.0;
-    }
-    
-    // Draw main advertisement text
-    ctx.fillStyle = color;
-    ctx.font = 'bold 48px Arial';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    
-    // Add glow effect to text
-    ctx.shadowColor = color;
-    ctx.shadowBlur = 20;
-    
-    // Handle text wrapping if needed
-    if (adText.length > 10) {
-      ctx.fillText(adText, canvas.width / 2, canvas.height / 2 - 30);
-    } else {
-      ctx.fillText(adText, canvas.width / 2, canvas.height / 2);
-    }
-    
-    // Draw slogan if present
-    if (slogan) {
-      ctx.font = '24px Arial';
-      ctx.fillText(slogan, canvas.width / 2, canvas.height / 2 + 50);
-    }
-    
-    // Reset shadow
-    ctx.shadowBlur = 0;
-    
-    // Add scan line effect
-    const scanLineY = (time * 100) % canvas.height;
-    ctx.fillStyle = '#FFFFFF';
-    ctx.globalAlpha = 0.4;
-    ctx.fillRect(0, scanLineY, canvas.width, 2);
-    ctx.globalAlpha = 1.0;
-    
-    // Update texture
-    billboard.texture.needsUpdate = true;
-  };
-  
   // Animate billboards
-  useFrame((state, delta) => {
+  useFrame((state) => {
     if (!billboardsRef.current) return;
     
     const time = state.clock.elapsedTime;
@@ -553,9 +398,6 @@ export const AnimatedBillboards = ({ count = 5 }) => {
         billboard.lastChangeTime = time;
       }
       
-      // Update billboard animation
-      updateBillboardText(billboard, time);
-      
       // Animate glow intensity
       if (billboard.glowLight) {
         billboard.glowLight.intensity = 1.5 + Math.sin(time * 2 + Math.random()) * 0.5;
@@ -564,12 +406,81 @@ export const AnimatedBillboards = ({ count = 5 }) => {
       // Add subtle movement to the billboard
       if (billboard.billboard) {
         billboard.billboard.rotation.z = Math.sin(time * 0.5) * 0.01;
-        billboard.textPlane.rotation.z = billboard.billboard.rotation.z;
       }
       
       // Update emissive intensity
       if (billboard.billboard.material) {
         billboard.billboard.material.emissiveIntensity = 1.0 + Math.sin(time * 2) * 0.3;
+      }
+    });
+  });
+  
+  return null;
+};
+
+/**
+ * Creates procedural city lights similar to index.js implementation
+ */
+export const CityLights = ({ count = 10, intensity = 1.0 }) => {
+  const lightsRef = useRef([]);
+  const { scene } = useThree();
+  
+  useEffect(() => {
+    // Create city lights
+    const lights = [];
+    
+    // Light colors
+    const colors = [
+      0x00FFFF, // Cyan
+      0xFF10F0, // Pink
+      0x39FF14, // Green
+      0xFFFF00  // Yellow
+    ];
+    
+    for (let i = 0; i < count; i++) {
+      // Create a point light with large distance for city lighting
+      const color = colors[Math.floor(Math.random() * colors.length)];
+      const light = new THREE.PointLight(color, 100 * intensity, 2000);
+      light.decay = 1;
+      
+      // Random position around the city
+      const angle = Math.random() * Math.PI * 2;
+      const radius = 500 + Math.random() * 1000;
+      const height = 200 + Math.random() * 300;
+      
+      light.position.set(
+        Math.cos(angle) * radius,
+        height,
+        Math.sin(angle) * radius
+      );
+      
+      scene.add(light);
+      lights.push(light);
+    }
+    
+    lightsRef.current = lights;
+    
+    return () => {
+      // Clean up lights
+      lights.forEach(light => {
+        scene.remove(light);
+      });
+    };
+  }, [scene, count, intensity]);
+  
+  // Animate lights
+  useFrame((state) => {
+    const time = state.clock.elapsedTime;
+    
+    // Subtly animate light intensity for that cyberpunk neon flicker
+    lightsRef.current.forEach((light, index) => {
+      if (light) {
+        // Create a unique phase for each light
+        const phase = index * 0.5;
+        
+        // Sine wave animation with occasional random glitches
+        const glitch = Math.random() > 0.99 ? Math.random() * 0.5 : 0;
+        light.intensity = (80 + Math.sin(time * 0.5 + phase) * 20 + glitch) * intensity;
       }
     });
   });
@@ -625,7 +536,7 @@ export const AtmosphericFog = () => {
 };
 
 /**
- * Creates a complete set of cyberpunk environmental effects
+ * Complete cyberpunk effects component combining all effects
  */
 export const CyberpunkEffects = ({ 
   rain = true,
@@ -634,6 +545,8 @@ export const CyberpunkEffects = ({
   vehicleCount = 15,
   billboards = true,
   billboardCount = 8,
+  cityLights = true,
+  cityLightCount = 10,
   atmosphericFog = true
 }) => {
   return (
@@ -641,9 +554,8 @@ export const CyberpunkEffects = ({
       {vehicles && <FlyingVehicles count={vehicleCount} />}
       {rain && <CyberpunkRain intensity={rainIntensity} />}
       {billboards && <AnimatedBillboards count={billboardCount} />}
+      {cityLights && <CityLights count={cityLightCount} />}
       {atmosphericFog && <AtmosphericFog />}
     </>
   );
 };
-
-export default CyberpunkEffects;

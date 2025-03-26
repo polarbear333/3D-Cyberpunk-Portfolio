@@ -1,9 +1,8 @@
 import React, { Suspense, useEffect, useState, useRef, useCallback } from 'react';
-import { Canvas, useThree, useFrame } from '@react-three/fiber';
+import { Canvas, useThree } from '@react-three/fiber';
 import { Loader, OrbitControls } from '@react-three/drei';
-import * as THREE from 'three';
-import { useStore } from './state/useStore';
 import useAudio from './hooks/useAudio';
+import { useStore } from './state/useStore';
 
 // UI Components - Use lazy loading for non-critical components
 const LoadingScreen = React.lazy(() => import('./components/UI/LoadingScreen'));
@@ -18,35 +17,17 @@ import CyberpunkEnvironment from './components/Effects/CyberpunkEnvironment';
 import DroneNavigation from './components/Navigation/DroneNavigation';
 import HotspotManager from './components/Hotspots/HotspotManager';
 
-// Rendering System
+// Rendering System 
 import OptimizedRenderer from './utils/OptimizedRenderer';
 
-// Scene Effects (individual imports instead of the wrapper)
+// Individual scene effects
 import { 
   FlyingVehicles, 
   CyberpunkRain,
   AnimatedBillboards, 
+  CityLights,
   AtmosphericFog 
 } from './components/Effects/CyberpunkSceneEffects';
-
-// Spatial Management for optimized rendering
-import { SpatialManager } from './utils/SpatialManager';
-
-// This component helps synchronize the OrbitControls with on-demand rendering
-const ControlsUpdater = React.memo(() => {
-  const { controls, invalidate } = useThree();
-  
-  useEffect(() => {
-    // Make sure controls trigger a render when they're used
-    if (controls) {
-      const callback = () => invalidate();
-      controls.addEventListener('change', callback);
-      return () => controls.removeEventListener('change', callback);
-    }
-  }, [controls, invalidate]);
-  
-  return null;
-});
 
 // Initialize the camera to look at a specific point
 const CameraInitializer = React.memo(() => {
@@ -63,124 +44,36 @@ const CameraInitializer = React.memo(() => {
   return null;
 });
 
-// Initialize the spatial manager
-const SpatialManagerInitializer = React.memo(() => {
-  const { scene, camera, invalidate } = useThree();
-  const spatialManagerRef = useRef(null);
-  const debugMode = useStore(state => state.debugMode);
-  
-  // Create the spatial manager
-  useEffect(() => {
-    if (!spatialManagerRef.current) {
-      spatialManagerRef.current = new SpatialManager(scene, camera);
-      spatialManagerRef.current.initialize();
-      
-      // Store reference globally for access by other components
-      window.spatialManager = spatialManagerRef.current;
-      
-      console.log("Spatial Manager initialized");
-      
-      // Initial render
-      invalidate();
-    }
-    
-    return () => {
-      if (spatialManagerRef.current) {
-        spatialManagerRef.current.dispose();
-        window.spatialManager = null;
-      }
-    };
-  }, [scene, camera, invalidate]);
-  
-  // Update spatial manager on each frame
-  useFrame(() => {
-    if (spatialManagerRef.current && spatialManagerRef.current.initialized) {
-      spatialManagerRef.current.update(camera.position);
-      
-      // Get performance metrics if needed for debugging
-      if (debugMode) {
-        const metrics = spatialManagerRef.current.getPerformanceMetrics();
-        // Use metrics for debug display if needed
-      }
-    }
-  });
-  
-  return null;
-});
-
-// Render loop manager for on-demand rendering
-const RenderManager = React.memo(() => {
-  const { invalidate } = useThree();
-  const previousTime = useRef(0);
-  const frameId = useRef(null);
-  
-  // Schedule periodic renders for animated content
-  useEffect(() => {
-    const scheduleRender = () => {
-      const currentTime = performance.now();
-      
-      // Only invalidate if enough time has passed (e.g., ~15 FPS when idle)
-      if (currentTime - previousTime.current > 66) {
-        invalidate();
-        previousTime.current = currentTime;
-      }
-      
-      frameId.current = requestAnimationFrame(scheduleRender);
-    };
-    
-    // Start the schedule
-    frameId.current = requestAnimationFrame(scheduleRender);
-    
-    return () => {
-      if (frameId.current) {
-        cancelAnimationFrame(frameId.current);
-      }
-    };
-  }, [invalidate]);
-  
-  return null;
-});
-
 function App() {
   const { isLoading, debugMode, setLoading, soundEnabled } = useStore();
   const [audioInitialized, setAudioInitialized] = useState(false);
   
   // References
   const canvasRef = useRef(null);
-  const rendererRef = useRef(null);
   
-  // Initialize audio using our custom hook - memoized
+  // Initialize audio using our custom hook
   const audio = useAudio({ 
     autoplay: false, 
     volume: 0.5, 
     loop: true 
   });
 
-  // Handle audio initialization on first user interaction - memoized callback
-  const initAudio = useCallback(() => {
+  // Handle audio initialization on first user interaction
+  const initAudio = React.useCallback(() => {
     if (!audioInitialized && audio) {
       audio.initialize();
       
       // Load and play ambient background music
       const loadAndPlayAmbient = async () => {
         try {
-          // Try to load audio files if they exist
-          try {
-            await audio.loadSound('ambient', '/audio/cyberpunk-ambient.mp3');
-            await audio.loadSound('drone', '/audio/drone-engine.mp3');
-            await audio.loadSound('click', '/audio/click.mp3');
-            await audio.loadSound('hover', '/audio/hover.mp3');
-          } catch (e) {
-            console.warn("Audio files not found. Audio will be disabled.");
-          }
+          await audio.loadSound('ambient', '/audio/cyberpunk-ambient.mp3');
+          await audio.loadSound('drone', '/audio/drone-engine.mp3');
+          await audio.loadSound('click', '/audio/click.mp3');
+          await audio.loadSound('hover', '/audio/hover.mp3');
           
           // Play ambient music at lower volume
           if (soundEnabled) {
-            try {
-              audio.playAmbient('ambient', { volume: 0.3 });
-            } catch (e) {
-              console.warn("Could not play ambient audio:", e);
-            }
+            audio.playAmbient('ambient', { volume: 0.3 });
           }
           
           setAudioInitialized(true);
@@ -216,75 +109,12 @@ function App() {
   useEffect(() => {
     if (audioInitialized) {
       if (soundEnabled) {
-        try {
-          audio.playAmbient('ambient', { volume: 0.3 });
-        } catch (e) {
-          console.warn("Could not play ambient audio:", e);
-        }
+        audio.playAmbient('ambient', { volume: 0.3 });
       } else {
-        try {
-          audio.stopSound('ambient');
-        } catch (e) {
-          console.warn("Could not stop ambient audio:", e);
-        }
+        audio.stopSound('ambient');
       }
     }
   }, [soundEnabled, audioInitialized, audio]);
-
-  // Initialize renderer with optimized settings - memoized callback
-  const initRenderer = useCallback((state) => {
-    if (!rendererRef.current && state.gl) {
-      rendererRef.current = state.gl;
-      
-      // Configure renderer
-      rendererRef.current.setClearColor(0x0a0a1a); // Darker blue background
-      rendererRef.current.outputColorSpace = THREE.SRGBColorSpace; // Modern replacement for outputEncoding
-      rendererRef.current.toneMapping = THREE.ReinhardToneMapping;
-      rendererRef.current.toneMappingExposure = 2.5;
-      
-      // Only enable shadows if not on a low-power device
-      const isLowPowerDevice = 
-        /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || 
-        (window.devicePixelRatio < 1.5) ||
-        (navigator.deviceMemory && navigator.deviceMemory < 4);
-      
-      rendererRef.current.shadowMap.enabled = !isLowPowerDevice;
-      rendererRef.current.shadowMap.type = THREE.BasicShadowMap; // Most efficient shadow type
-      
-      // Expose renderer for debugging
-      window.renderer = rendererRef.current;
-      
-      console.log("Renderer configured");
-    }
-  }, []);
-
-  // Handle window resize - memoized callback
-  const handleResize = useCallback(() => {
-    if (rendererRef.current) {
-      // Make sure canvas dimensions are correct
-      rendererRef.current.setSize(window.innerWidth, window.innerHeight);
-      
-      // Update camera aspect ratio
-      if (canvasRef.current) {
-        const camera = canvasRef.current.__r3f?.camera;
-        if (camera) {
-          camera.aspect = window.innerWidth / window.innerHeight;
-          camera.updateProjectionMatrix();
-        }
-      }
-      
-      // Make sure a render happens after resize
-      if (canvasRef.current && canvasRef.current.__r3f) {
-        canvasRef.current.__r3f.invalidate();
-      }
-    }
-  }, []);
-  
-  // Set up resize listener
-  useEffect(() => {
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, [handleResize]);
 
   return (
     <div className="w-screen h-screen bg-slate-900 overflow-hidden">
@@ -299,55 +129,42 @@ function App() {
           antialias: true,
           alpha: true,
           preserveDrawingBuffer: true,
-          powerPreference: "default", // Use default instead of "high-performance" to save battery
-          stencil: true, // Needed for some post-processing effects
+          powerPreference: "default",
+          stencil: true,
           depth: true
         }}
-        dpr={window.devicePixelRatio > 2 ? 2 : window.devicePixelRatio} // Cap pixel ratio at 2 for performance
+        dpr={window.devicePixelRatio > 2 ? 2 : window.devicePixelRatio}
         camera={{
           fov: 60,
           near: 0.1,
           far: 2000,
-          position: [590, 450, 630] // Set initial position - lookAt will be called separately
+          position: [590, 450, 630]
         }}
-        onCreated={(state) => {
-          initRenderer(state);
-          // Initial render
-          state.invalidate();
-        }}
-        shadows={false} // Disable shadow by default for performance
+        shadows={false}
       >
         <Suspense fallback={null}>
           {/* Initialize camera with lookAt */}
           <CameraInitializer />
           
-          {/* Initialize spatial manager */}
-          <SpatialManagerInitializer />
-          
-          {/* Manages on-demand rendering with OrbitControls */}
-          <ControlsUpdater />
-          
-          {/* Handles periodic renders for animations */}
-          <RenderManager />
-          
-          {/* Advanced multi-pass rendering system */}
+          {/* Advanced multi-pass rendering system with bloom */}
           <OptimizedRenderer 
-            bloomStrength={1.2}
-            bloomRadius={0.8}
-            bloomThreshold={0.3}
+            bloomStrength={0.7}  // Higher bloom for better neon effect
+            bloomRadius={1.0}
+            bloomThreshold={0}   // Zero threshold for pseudo-volumetric lighting
             adaptiveResolution={true}
           />
           
-          {/* Layered cyberpunk environment with skybox, fog and lighting */}
+          {/* Cyberpunk environment (skybox, fog, lighting) */}
           <CyberpunkEnvironment intensity={0.3} />
           
-          {/* Main enhanced cyberpunk city scene */}
+          {/* Main cyberpunk city scene */}
           <CyberpunkCityScene />
           
-          {/* Dynamic environmental elements - now individual components */}
+          {/* Dynamic environmental elements with procedural city lights */}
           <FlyingVehicles count={15} speed={1.0} />
           <CyberpunkRain intensity={0.7} />
           <AnimatedBillboards count={8} />
+          <CityLights count={5} intensity={0.5} />
           <AtmosphericFog />
           
           {/* Drone navigation and camera controls */}

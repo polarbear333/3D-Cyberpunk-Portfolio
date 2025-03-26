@@ -28,8 +28,8 @@ const CyberpunkCityScene = React.memo(() => {
     time: 0,
     materials: [],
     currentBatch: 0,
-    batchSize: 20,
-    updateInterval: 0.1, // seconds between updates
+    batchSize: 15,
+    updateInterval: 0.15, // seconds between updates
     lastUpdate: 0,
     runningAnimation: false, // Track if we need continuous animation
     animationNeedsUpdate: false // Flag to control when animations run
@@ -214,10 +214,10 @@ const CyberpunkCityScene = React.memo(() => {
     // Start random animations at intervals
     const intervalId = setInterval(() => {
       // 75% chance to start animations
-      if (Math.random() < 0.75) {
+      if (Math.random() < 0.6) {
         startRandomAnimations();
       }
-    }, 2000 + Math.random() * 2000); // 2-4 seconds between animations
+    }, 3000 + Math.random() * 3000); // 2-4 seconds between animations
     
     // Clear interval on unmount
     return () => clearInterval(intervalId);
@@ -268,7 +268,7 @@ const CyberpunkCityScene = React.memo(() => {
         </mesh>
         
         {/* Emissive elements in environment */}
-        {Array.from({ length: 50 }).map((_, i) => (
+        {Array.from({ length: 20 }).map((_, i) => (
           <mesh 
             key={i} 
             position={[
@@ -292,12 +292,12 @@ const CyberpunkCityScene = React.memo(() => {
       </Environment>
       
       {/* Enhanced cyberpunk lighting setup */}
-      <ambientLight intensity={0.3} color="#2211AA" /> {/* Subtle blue ambient */}
+      <ambientLight intensity={0.2} color="#2211AA" /> {/* Subtle blue ambient */}
       
       {/* Main directional light */}
       <directionalLight 
         position={[5, 30, 5]} 
-        intensity={0.5} 
+        intensity={0.4} 
         color="#7040FF" 
         castShadow
       />
