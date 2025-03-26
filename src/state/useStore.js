@@ -5,6 +5,7 @@ const useStore = create((set, get) => ({
   // Application state
   isLoading: true,
   debugMode: true, // Set to true for development
+  assets: null, // Store for loaded assets
   
   // Drone position (simplified from main.js approach)
   dronePosition: new Vector3(0, 15, 0),
@@ -26,6 +27,9 @@ const useStore = create((set, get) => ({
   // Actions
   setLoading: (isLoading) => set({ isLoading }),
   toggleDebugMode: () => set((state) => ({ debugMode: !state.debugMode })),
+  
+  // Set assets once loaded
+  setAssets: (assets) => set({ assets }),
   
   // Simplified drone position update
   updateDronePosition: (position) => set({ dronePosition: position }),
@@ -52,22 +56,69 @@ const useStore = create((set, get) => ({
     );
   },
   
-  // Load projects from JSON file
+  // Load projects from predefined data (fallback if JSON not available)
   loadProjects: async () => {
     try {
-      // This could fetch from a CMS or local JSON
+      // Try to fetch from a JSON file
       const response = await fetch('/data/projects.json');
       
-      // If the JSON file doesn't exist, use default projects
-      if (!response.ok) {
+      if (response.ok) {
+        const projects = await response.json();
+        set({ projects });
+      } else {
+        // Use default projects if JSON file not found
         console.warn('Projects JSON not found, using default projects');
-        return;
+        
+        const defaultProjects = [
+          {
+            id: 'project1',
+            title: 'Web Development',
+            description: 'Frontend and backend development using modern frameworks',
+            technologies: ['React', 'Node.js', 'Three.js'],
+            image: '/images/project1.jpg',
+            url: 'https://example.com/project1'
+          },
+          {
+            id: 'project2',
+            title: 'Mobile App',
+            description: 'Cross-platform mobile applications',
+            technologies: ['React Native', 'Flutter', 'Firebase'],
+            image: '/images/project2.jpg',
+            url: 'https://example.com/project2'
+          },
+          {
+            id: 'project3',
+            title: '3D Modeling',
+            description: 'Creating immersive 3D experiences',
+            technologies: ['Blender', 'Three.js', 'WebGL'],
+            image: '/images/project3.jpg',
+            url: 'https://example.com/project3'
+          },
+          {
+            id: 'project4',
+            title: 'AI Projects',
+            description: 'Intelligent solutions using machine learning',
+            technologies: ['TensorFlow', 'PyTorch', 'OpenAI'],
+            image: '/images/project4.jpg',
+            url: 'https://example.com/project4'
+          },
+          {
+            id: 'project5',
+            title: 'Central Hub',
+            description: 'Central showcase of all available projects and capabilities',
+            technologies: ['Three.js', 'React', 'GSAP', 'WebGL'],
+            image: '/images/central.jpg',
+            url: 'https://example.com/hub'
+          }
+        ];
+        
+        set({ projects: defaultProjects });
       }
-      
-      const projects = await response.json();
-      set({ projects });
     } catch (error) {
       console.error('Failed to load projects', error);
+      
+      // Set empty projects array on error
+      set({ projects: [] });
     }
   },
 }));

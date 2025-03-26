@@ -1,5 +1,5 @@
-import React, { Suspense, useEffect, useState, useRef, useCallback } from 'react';
-import { Canvas, useThree } from '@react-three/fiber';
+import React, { Suspense, useEffect, useState, useRef } from 'react';
+import { Canvas } from '@react-three/fiber';
 import { Loader, OrbitControls } from '@react-three/drei';
 import useAudio from './hooks/useAudio';
 import { useStore } from './state/useStore';
@@ -20,29 +20,6 @@ import HotspotManager from './components/Hotspots/HotspotManager';
 // Rendering System 
 import OptimizedRenderer from './utils/OptimizedRenderer';
 
-// Individual scene effects
-import { 
-  FlyingVehicles, 
-  CyberpunkRain,
-  AnimatedBillboards, 
-  CityLights,
-  AtmosphericFog 
-} from './components/Effects/CyberpunkSceneEffects';
-
-// Initialize the camera to look at a specific point
-const CameraInitializer = React.memo(() => {
-  const { camera, invalidate } = useThree();
-  
-  useEffect(() => {
-    // Set the initial camera position and lookAt
-    camera.position.set(590, 450, 630);
-    camera.lookAt(0, 10, 0);
-    camera.updateProjectionMatrix();
-    invalidate();
-  }, [camera, invalidate]);
-  
-  return null;
-});
 
 function App() {
   const { isLoading, debugMode, setLoading, soundEnabled } = useStore();
@@ -143,37 +120,13 @@ function App() {
         shadows={false}
       >
         <Suspense fallback={null}>
-          {/* Initialize camera with lookAt */}
-          <CameraInitializer />
-          
-          {/* Advanced multi-pass rendering system with bloom */}
-          <OptimizedRenderer 
-            bloomStrength={0.7}  // Higher bloom for better neon effect
-            bloomRadius={1.0}
-            bloomThreshold={0}   // Zero threshold for pseudo-volumetric lighting
-            adaptiveResolution={true}
-          />
-          
-          {/* Cyberpunk environment (skybox, fog, lighting) */}
+          {/* Instead of custom CameraInitializer, just use OrbitControls to set camera look-at */}
           <CyberpunkEnvironment intensity={0.3} />
-          
-          {/* Main cyberpunk city scene */}
           <CyberpunkCityScene />
           
-          {/* Dynamic environmental elements with procedural city lights */}
-          <FlyingVehicles count={15} speed={1.0} />
-          <CyberpunkRain intensity={0.7} />
-          <AnimatedBillboards count={8} />
-          <CityLights count={5} intensity={0.5} />
-          <AtmosphericFog />
-          
-          {/* Drone navigation and camera controls */}
           <DroneNavigation audio={audio} />
-          
-          {/* Interactive project hotspots */}
           <HotspotManager audio={audio} />
           
-          {/* Camera controls - enhanced for cyberpunk feel */}
           <OrbitControls 
             enableDamping={true}
             dampingFactor={0.05}
@@ -184,10 +137,16 @@ function App() {
             target={[0, 10, 0]}
           />
           
-          {/* Camera position tracker for debug info */}
           <Suspense fallback={null}>
             <CameraTracker />
           </Suspense>
+          
+          <OptimizedRenderer 
+            bloomStrength={0.7}
+            bloomRadius={1.0}
+            bloomThreshold={0}
+            adaptiveResolution={true}
+          />
         </Suspense>
       </Canvas>
       
@@ -212,26 +171,22 @@ function App() {
         }}
       />
       
-      {/* 2D UI overlay with cyberpunk styling */}
       <Suspense fallback={null}>
         <Interface audio={audio} />
       </Suspense>
       
-      {/* Debug Info */}
       {debugMode && (
         <Suspense fallback={null}>
           <DebugInfo />
         </Suspense>
       )}
       
-      {/* Only show stats in debug mode */}
       {debugMode && (
         <Suspense fallback={null}>
           <StatsPanel mode={0} position="top-left" />
         </Suspense>
       )}
       
-      {/* Global scanline effect */}
       <div className="scanline"></div>
     </div>
   );
