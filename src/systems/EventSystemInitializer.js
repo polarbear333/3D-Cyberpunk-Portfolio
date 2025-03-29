@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef, useCallback } from 'react';
 import { useEventSystem, EVENT_TYPES } from './EventSystem';
 
 /**
@@ -6,59 +6,93 @@ import { useEventSystem, EVENT_TYPES } from './EventSystem';
  * This should be mounted before any other components that use the event system
  */
 const EventSystemInitializer = () => {
-  const { initialize, active } = useEventSystem(state => ({
-    initialize: state.initialize,
-    active: state.active
-  }));
+  // References to track initialization and performance
+  const isInitializedRef = useRef(false);
+  const frameCountRef = useRef(0);
+  const lastTimeRef = useRef(performance.now());
+  const fpsUpdateIntervalRef = useRef(1000); // Update FPS every second
+  const lastFpsUpdateRef = useRef(performance.now());
+  const rafIdRef = useRef(null);
   
-  // Initialize the event system on mount
+  // Access event system APIs
+  const initialize = useEventSystem(state => state.initialize);
+  const active = useEventSystem(state => state.active);
+  
+  // CRITICAL FIX: Get a direct reference to emit instead of getting it from the hook each render
+  const eventSystemRef = useRef();
+  
+  // Set up event system reference once
   useEffect(() => {
-    if (!active) {
+    eventSystemRef.current = useEventSystem.getState();
+    
+    if (!isInitializedRef.current) {
       console.log('Initializing event system');
       initialize();
+      isInitializedRef.current = true;
     }
-    
-    // Register performance monitor
-    let rafId;
-    let lastTime = performance.now();
-    let frameCount = 0;
-    let fpsUpdateInterval = 1000; // Update FPS every second
-    let lastFpsUpdate = lastTime;
-    let fps = 60;
-    
+  }, [initialize]);
+  
+  // Set up performance monitoring in a separate effect
+  useEffect(() => {
+    // Start performance monitoring
     const monitorPerformance = () => {
       const now = performance.now();
-      const delta = now - lastTime;
-      lastTime = now;
-      frameCount++;
+      const delta = now - lastTimeRef.current;
+      lastTimeRef.current = now;
+      frameCountRef.current++;
       
       // Update FPS counter once per second
-      if (now - lastFpsUpdate > fpsUpdateInterval) {
-        fps = Math.round((frameCount * 1000) / (now - lastFpsUpdate));
-        frameCount = 0;
-        lastFpsUpdate = now;
+      if (now - lastFpsUpdateRef.current > fpsUpdateIntervalRef.current) {
+        const fps = Math.round((frameCountRef.current * 1000) / (now - lastFpsUpdateRef.current));
+        frameCountRef.current = 0;
+        lastFpsUpdateRef.current = now;
         
-        // Dispatch performance metrics
-        useEventSystem.getState().emit('performance:metrics', {
-          fps,
-          delta,
-          time: now
-        });
+        // CRITICAL FIX: Use the saved reference instead of getting it from hook
+        if (active && eventSystemRef.current) {
+          eventSystemRef.current.emit('performance:metrics', {
+            fps,
+            delta,
+            time: now
+          });
+        }
       }
       
-      rafId = requestAnimationFrame(monitorPerformance);
+      // Continue monitoring
+      rafIdRef.current = requestAnimationFrame(monitorPerformance);
     };
     
-    // Start performance monitoring
-    monitorPerformance();
+    // Start monitoring
+    rafIdRef.current = requestAnimationFrame(monitorPerformance);
     
-    // Clean up on unmount
+    // Cleanup on unmount
     return () => {
-      if (rafId) {
-        cancelAnimationFrame(rafId);
+      if (rafIdRef.current) {
+        cancelAnimationFrame(rafIdRef.current);
+        rafIdRef.current = null;
       }
     };
-  }, [initialize, active]);
+  }, [active]);
+  
+  // Handle key events
+  const handleKeyDown = useCallback((event) => {
+    // CRITICAL FIX: Use the saved reference instead of directly accessing through hook
+    if (active && eventSystemRef.current) {
+      eventSystemRef.current.emit(EVENT_TYPES.KEY_PRESS, {
+        key: event.key,
+        code: event.code,
+        altKey: event.altKey,
+        ctrlKey: event.ctrlKey,
+        shiftKey: event.shiftKey,
+        timestamp: performance.now()
+      });
+    }
+  }, [active]);
+  
+  // CRITICAL FIX: Separate key event handlers to break dependency chain
+  useEffect(() => {
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleKeyDown]);
   
   // This component doesn't render anything
   return null;
